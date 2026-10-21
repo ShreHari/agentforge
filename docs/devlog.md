@@ -11,3 +11,5 @@ One or two lines a day: what works now that didn't yesterday, and what's next.
 - Baseline added: 5-step LangGraph graph (fake steps), Postgres checkpoints, crash and
   resume from the terminal, api skeleton, 22 tests.
 - Next:
+## 21 Oct:
+- Fixed the postgres port clash( mac posstgres on 5432)
