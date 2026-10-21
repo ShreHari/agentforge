@@ -1,0 +1,18 @@
+Alex Example (a made-up person for testing AgentForge)
+Sheffield, UK
+
+Experience
+AI Engineering Intern, Example Labs (2026)
+- Built Python services that call LLM APIs to answer customer questions
+- Built REST APIs with FastAPI and deployed them with Docker
+- Wrote automated tests with pytest for the booking flow
+
+Software Engineering Intern, Sample Systems (2024)
+- Wrote SQL reports on PostgreSQL for the sales team
+- Fixed bugs in a Flask web app
+
+Education
+MSc Artificial Intelligence, Example University
+
+Skills
+Python, FastAPI, Docker, PostgreSQL, pytest, Git

@@ -1,13 +1,25 @@
 [project]
 name = "agentforge"
 version = "0.1.0"
-description = "Add your description here"
+description = "A low-code agent platform. First agent: the Job Hunt Agent."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.146.0",
     "langchain>=1.4.4",
     "langgraph>=1.2.14",
     "langgraph-checkpoint-postgres>=3.1.2",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic>=2.14.1",
+    "pydantic-settings>=2.16.0",
+    "uvicorn>=0.54.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

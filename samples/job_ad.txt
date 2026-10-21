@@ -1,0 +1,22 @@
+Company: Fernhill Analytics Ltd
+Role: Junior AI Engineer
+Location: Sheffield (hybrid)
+
+About us
+Fernhill Analytics is a fictional company used for testing AgentForge. We build demand
+forecasting tools for UK retailers and are adding AI assistants to our product.
+
+What you'll do
+Build and run AI features used by our customers every day, from prototype to production.
+
+Requirements
+- Python for production services
+- LLM APIs or agent frameworks such as LangGraph
+- REST APIs with FastAPI or Flask
+- Docker and cloud deployment
+- SQL and PostgreSQL
+- Writing automated tests with pytest
+
+Nice to have
+- Kubernetes
+- Google Cloud Platform

@@ -3,7 +3,23 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: agentforge
-      POSTGRES_PASSWORD: agentforge
+      POSTGRES_PASSWORD: agentforge   # local only; production passwords live in Secret Manager
       POSTGRES_DB: agentforge
     ports:
-      - "5432:5432"
+      - "5433:5432"
+    volumes:
+      # A named volume: your data survives `docker compose down`.
+      # `docker compose down -v` deletes it and gives you an empty database.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Docker asks Postgres "are you ready?" every 5 seconds; `docker compose ps`
+      # shows "healthy" once it says yes.
+      test: ["CMD-SHELL", "pg_isready -U agentforge -d agentforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # TODO(Day 4): the Pub/Sub emulator, so the queue runs on your laptop too.
+
+volumes:
+  pgdata:

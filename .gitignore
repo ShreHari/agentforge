@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# The project's private environment (rebuild with: uv sync)
+.venv/
+
+# Secrets: never commit these
+.env
+*.key
+*-credentials.json
+
+# Editors and macOS
+.vscode/
+.idea/
+.DS_Store
