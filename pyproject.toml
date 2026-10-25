@@ -24,3 +24,9 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.pyright]
+# LangGraph fills the state step by step, and the graph's edges guarantee each key exists
+# before a later step reads it (test_full_run checks this). The checker can't see the
+# edges, so this rule only gives false alarms for LangGraph state.
+reportTypedDictNotRequiredAccess = "none"

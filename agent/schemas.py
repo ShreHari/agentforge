@@ -40,11 +40,18 @@ class RequirementMatch(BaseModel):
     evidence: str | None = None  # the CV line that supports it, if any
 
 
+class RequirementList(BaseModel):
+    """How well a CV covers each requirement in a job ad."""
+
+    matches: list[RequirementMatch]
+
+
 class MatchReport(BaseModel):
     """Output of the match step."""
 
     matches: list[RequirementMatch]
-    score: int = Field(ge=0, le=100)  # 0 = no overlap, 100 = every requirement strong
+    # 0 = no overlap, 100 = every requirement strong
+    score: int = Field(ge=0, le=100)
 
 
 class Draft(BaseModel):

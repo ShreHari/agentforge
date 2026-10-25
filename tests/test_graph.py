@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from agent import nodes
 from agent.graph import STEPS, build_graph
+from agent.schemas import RequirementMatch
 from agent.tracker import InMemoryTracker
 
 
@@ -63,7 +64,8 @@ def test_resume_after_failure_skips_finished_steps(monkeypatch, job_ad, cv):
 
     with pytest.raises(ConnectionError):
         graph.invoke(start(job_ad, cv), config(), durability="sync")
-    assert graph.get_state(config()).next == ("research",)  # stopped before research
+    assert graph.get_state(config()).next == (
+        "research",)  # stopped before research
 
     result = graph.invoke(None, config(), durability="sync")  # None = resume
 
@@ -75,7 +77,8 @@ def test_save_twice_keeps_one_row():
     """The idempotency guarantee: the save step can run twice, the tracker gets one row."""
     tracker = InMemoryTracker()
     save = nodes.make_save(tracker)
-    state = {"run_id": "run-1", "user_id": "u", "company": "Acme", "match": {"score": 50}}
+    state = {"run_id": "run-1", "user_id": "u",
+             "company": "Acme", "match": {"score": 50}}
 
     first = save(state)
     second = save(state)
@@ -91,10 +94,32 @@ def test_requirements_are_read_from_bullets(job_ad):
     assert len(requirements) == 8
 
 
-def test_fake_mode_off_gives_a_clear_error(monkeypatch, job_ad, cv):
+def test_real_match_uses_the_model_answer(monkeypatch, job_ad, cv):
+    """With FAKE_LLM=false, match uses the model's ratings and our code scores them.
+
+    The model call is replaced with a pretend answer, so the test never calls the AI.
+    """
+    pretend_answer = [
+        RequirementMatch(requirement="Python", strength="strong",
+                         evidence="Built Python services"),
+        RequirementMatch(requirement="Kubernetes", strength="missing"),
+    ]
     monkeypatch.setenv("FAKE_LLM", "false")
     nodes.get_settings.cache_clear()
-    graph = build_graph(InMemorySaver(), InMemoryTracker())
+    monkeypatch.setattr(nodes, "ask_model_for_matches",
+                        lambda job_ad, cv: pretend_answer)
 
-    with pytest.raises(NotImplementedError, match="TODO\\(Day 2\\)"):
-        graph.invoke(start(job_ad, cv), config())
+    result = nodes.match({"job_ad": job_ad, "cv": cv})
+
+    assert [m["requirement"]
+            for m in result["match"]["matches"]] == ["Python", "Kubernetes"]
+    assert result["match"]["score"] == 50  # 1 strong + 0 missing, out of 2
+
+
+def test_score_matches():
+    def m(strength):
+        return RequirementMatch(requirement="x", strength=strength)
+
+    assert nodes.score_matches([]) == 0
+    assert nodes.score_matches(
+        [m("strong"), m("partial"), m("missing"), m("missing")]) == 38
