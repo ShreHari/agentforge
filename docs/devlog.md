@@ -18,3 +18,5 @@ One or two lines a day: what works now that didn't yesterday, and what's next.
 - Real Ai match has been done : 62 (keywords) to 69 haha (gemini): 23 test pass
 - the draft has worked!!Even though the prompt says that dont invent!!it invented 3 of 5 bullets,got to eval now!
 - the 15 test cases has been passed ( 5 clean , 5 messy , 5 adversarial) on two runs!! , and the prompt changes took it from the 0/6 to 6/6 , and the new cases added honesty, injection and messy - input coverage.
+ - first deep agent : it planned with write to_dos,it chose with own 2 searches,since it dosent know todays date it just gave 2024 2025
+ - Research is now a real Deep Agent: web search via Tavily, 3-search limit in code, today’s date in the prompt, invented URLs dropped. First full real run: for a made-up company it said ‘not found’ instead of guessing
