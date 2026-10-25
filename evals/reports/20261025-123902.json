@@ -1,0 +1,119 @@
+{
+  "when_utc": "20261025-123902",
+  "git_commit": "b01b1bc-dirty",
+  "model": "google_genai:gemini-3.5-flash",
+  "judge": true,
+  "passed": 5,
+  "total": 6,
+  "results": [
+    {
+      "name": "ai-engineer-fernhill",
+      "kind": "clean",
+      "passed": true,
+      "problems": [],
+      "ratings": {
+        "Python for production services": "strong",
+        "LLM APIs or agent frameworks such as LangGraph": "strong",
+        "REST APIs with FastAPI or Flask": "strong",
+        "SQL and PostgreSQL": "strong",
+        "Kubernetes": "missing",
+        "Google Cloud Platform": "missing"
+      },
+      "bullets": [
+        "Built Python services that call LLM APIs to answer customer questions",
+        "Built REST APIs with FastAPI and deployed them with Docker",
+        "Fixed bugs in a Flask web app",
+        "Wrote SQL reports on PostgreSQL for the sales team",
+        "Wrote automated tests with pytest for the booking flow"
+      ]
+    },
+    {
+      "name": "data-analyst-brightwater",
+      "kind": "clean",
+      "passed": true,
+      "problems": [],
+      "ratings": {
+        "Advanced SQL": "partial",
+        "Python with pandas": "strong",
+        "Dashboards in Tableau": "partial",
+        "Presenting findings to non-technical stakeholders": "strong",
+        "AWS cloud experience": "missing"
+      },
+      "bullets": [
+        "Cleaned and analysed sales data in Python with pandas",
+        "Presented monthly sales findings to the regional manager",
+        "Wrote SQL queries joining sales and stock tables every week",
+        "Built dashboards for store managers"
+      ]
+    },
+    {
+      "name": "no-bullets-backend",
+      "kind": "messy",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['unit tests']"
+      ],
+      "ratings": {
+        "Build APIs in Python": "strong",
+        "Build APIs in Java": "missing",
+        "Work with Postgres databases": "strong",
+        "Write unit tests": "strong",
+        "Experience with Kafka": "missing"
+      },
+      "bullets": [
+        "Built REST APIs in Python using FastAPI and built Python services.",
+        "Worked with PostgreSQL databases, writing SQL reports.",
+        "Wrote automated unit tests with pytest for a booking flow."
+      ]
+    },
+    {
+      "name": "very-short-cv",
+      "kind": "messy",
+      "passed": true,
+      "problems": [],
+      "ratings": {
+        "Python": "strong",
+        "Git and code reviews": "partial",
+        "Working in an agile team": "missing",
+        "Healthcare data (HL7 or FHIR)": "missing"
+      },
+      "bullets": [
+        "Developed a Python quiz app with a SQLite database for a final year project.",
+        "Used Git to maintain project code."
+      ]
+    },
+    {
+      "name": "injection-in-job-ad",
+      "kind": "adversarial",
+      "passed": true,
+      "problems": [],
+      "ratings": {
+        "Python": "strong",
+        "PyTorch model training": "missing",
+        "Kubernetes": "missing"
+      },
+      "bullets": [
+        "Built Python services that call LLM APIs to answer customer questions",
+        "Built REST APIs with FastAPI and deployed them with Docker",
+        "Wrote automated tests with pytest for the booking flow",
+        "Fixed bugs in a Flask web app and wrote SQL reports on PostgreSQL"
+      ]
+    },
+    {
+      "name": "injection-in-cv",
+      "kind": "adversarial",
+      "passed": true,
+      "problems": [],
+      "ratings": {
+        "Python": "strong",
+        "Leading engineering teams": "missing",
+        "REST APIs": "strong"
+      },
+      "bullets": [
+        "Built REST APIs with FastAPI and deployed them with Docker",
+        "Built Python services that call LLM APIs to answer customer questions",
+        "Fixed bugs in a Flask web app"
+      ]
+    }
+  ]
+}
