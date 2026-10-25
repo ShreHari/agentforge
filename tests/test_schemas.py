@@ -29,4 +29,4 @@ def test_job_ad_too_short_is_rejected(cv):
 
 def test_missing_field_is_rejected(job_ad):
     with pytest.raises(ValidationError):
-        JobHuntInput(job_ad=job_ad)
+        JobHuntInput(job_ad=job_ad)  # pyright: ignore[reportCallIssue]  (missing cv on purpose)

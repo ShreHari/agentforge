@@ -59,3 +59,14 @@ class Draft(BaseModel):
 
     cv_bullets: list[str] = Field(max_length=5)
     interview_questions: list[str] = Field(max_length=10)
+
+
+class DraftAnswer(BaseModel):
+    """Tailored CV bullets and likely interview questions for one job."""
+
+    cv_bullets: list[str] = Field(
+        description="5 CV bullet points, each rewriting real experience from the CV to fit the job"
+    )
+    interview_questions: list[str] = Field(
+        description="10 interview questions this candidate is likely to be asked for this job"
+    )

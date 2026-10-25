@@ -13,3 +13,6 @@ One or two lines a day: what works now that didn't yesterday, and what's next.
 - Next:
 ## 21 Oct:
 - Fixed the postgres port clash( mac posstgres on 5432)
+
+## 25 OCT :
+- Real Ai match has been done : 62 (keywords) to 69 haha (gemini): 23 test pass

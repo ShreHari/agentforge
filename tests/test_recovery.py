@@ -28,7 +28,9 @@ def run_agent(*args: str) -> subprocess.CompletedProcess:
 
 def tracker_rows(database_url: str, run_id: str) -> int:
     with psycopg.connect(database_url) as conn:
-        return conn.execute("SELECT count(*) FROM tracker WHERE run_id = %s", (run_id,)).fetchone()[0]
+        row = conn.execute("SELECT count(*) FROM tracker WHERE run_id = %s", (run_id,)).fetchone()
+    assert row is not None  # count(*) always returns one row
+    return row[0]
 
 
 def test_postgres_tracker_is_idempotent(database_url):

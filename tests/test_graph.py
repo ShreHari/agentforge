@@ -1,20 +1,22 @@
 """The graph, in memory: no database needed."""
 
 import pytest
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import ValidationError
 
 from agent import nodes
 from agent.graph import STEPS, build_graph
 from agent.schemas import RequirementMatch
+from agent.state import JobHuntState
 from agent.tracker import InMemoryTracker
 
 
-def start(job_ad: str, cv: str, run_id: str = "run-1") -> dict:
+def start(job_ad: str, cv: str, run_id: str = "run-1") -> JobHuntState:
     return {"run_id": run_id, "user_id": "test-user", "job_ad": job_ad, "cv": cv}
 
 
-def config(run_id: str = "run-1") -> dict:
+def config(run_id: str = "run-1") -> RunnableConfig:
     return {"configurable": {"thread_id": run_id}}
 
 
@@ -77,7 +79,7 @@ def test_save_twice_keeps_one_row():
     """The idempotency guarantee: the save step can run twice, the tracker gets one row."""
     tracker = InMemoryTracker()
     save = nodes.make_save(tracker)
-    state = {"run_id": "run-1", "user_id": "u",
+    state: JobHuntState = {"run_id": "run-1", "user_id": "u",
              "company": "Acme", "match": {"score": 50}}
 
     first = save(state)
@@ -123,3 +125,21 @@ def test_score_matches():
     assert nodes.score_matches([]) == 0
     assert nodes.score_matches(
         [m("strong"), m("partial"), m("missing"), m("missing")]) == 38
+
+
+def test_real_draft_is_trimmed_to_the_limits(monkeypatch):
+    """However many items the model returns, our code keeps 5 bullets and 10 questions."""
+    too_many = nodes.DraftAnswer(
+        cv_bullets=[f"bullet {i}" for i in range(7)],
+        interview_questions=[f"question {i}" for i in range(12)],
+    )
+    monkeypatch.setenv("FAKE_LLM", "false")
+    nodes.get_settings.cache_clear()
+    monkeypatch.setattr(nodes, "ask_model_for_draft",
+                        lambda job_ad, cv, matches: too_many)
+
+    result = nodes.draft(
+        {"job_ad": "ad", "cv": "cv", "match": {"matches": []}})
+
+    assert len(result["draft"]["cv_bullets"]) == 5
+    assert len(result["draft"]["interview_questions"]) == 10
