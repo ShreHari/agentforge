@@ -5,6 +5,7 @@ description = "A low-code agent platform. First agent: the Job Hunt Agent."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "deepagents>=0.7.32",
     "fastapi>=0.146.0",
     "langchain>=1.4.4",
     "langchain-google-genai>=4.4.2",
@@ -13,6 +14,7 @@ dependencies = [
     "psycopg[binary,pool]>=3.3.6",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.0",
+    "tavily-python>=0.8.5",
     "uvicorn>=0.54.0",
 ]
 
