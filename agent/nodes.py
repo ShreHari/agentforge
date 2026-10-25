@@ -216,8 +216,11 @@ def match(state: JobHuntState) -> dict:
 
 
 # v2 (25 Oct). v1 scored 0/6 on evals: every bullet added claims the CV doesn't make.
-# Each rule below answers one pattern the judge found. The example is made up on purpose:
-# copying eval cases into the prompt would raise the score without making the agent better.
+# Each rule below answers one pattern the judge found.
+# v3 (25 Oct). v2 let the job ad's word replace the CV's, so "automated tests" became
+# "unit tests". Now only words with exactly the same meaning may be swapped.
+# The examples are made up on purpose: copying eval cases into the prompt would raise
+# the score without making the agent better.
 DRAFT_INSTRUCTIONS = """You help a candidate tailor their CV to a job ad.
 
 CV BULLETS
@@ -225,8 +228,10 @@ Write up to 5 CV bullet points. Each bullet restates one thing the CV really say
 worded so it speaks to the job's requirements. Use the ratings to choose what to lead
 with, and never write a bullet for a requirement rated missing.
 
-You may reorder facts, shorten them, and use the job ad's word for something the CV
-already says. You must not add:
+You may reorder facts and shorten them. Use the job ad's word only when it means exactly
+the same as the CV's word ("JS" for "JavaScript"). If the job's word is narrower or
+different, keep the CV's word: "used a cloud provider" is not "used AWS".
+You must not add:
 - anything the CV does not state: jobs, skills, tools, numbers or results
 - describing words the CV does not use, such as "robust", "scalable",
   "production-ready" or "critical"
