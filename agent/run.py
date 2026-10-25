@@ -129,6 +129,10 @@ def print_summary(state: dict) -> None:
     draft_result = state.get("draft", {})
     print()
     print(f"Company:      {state.get('company')}")
+    brief = state.get("brief", {})
+    print(f"Research:     {brief.get('summary')}")
+    for url in brief.get("sources", []):
+        print(f"  source: {url}")
     print(f"Match score:  {match_report.get('score')}/100")
     for m in match_report.get("matches", []):
         print(f"  [{m['strength']:<7}] {m['requirement']}")

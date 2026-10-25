@@ -1,13 +1,14 @@
 """The graph, in memory: no database needed."""
 
 import pytest
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import ValidationError
 
 from agent import nodes
 from agent.graph import STEPS, build_graph
-from agent.schemas import RequirementMatch
+from agent.schemas import CompanyBrief, RequirementMatch
 from agent.state import JobHuntState
 from agent.tracker import InMemoryTracker
 
@@ -143,3 +144,57 @@ def test_real_draft_is_trimmed_to_the_limits(monkeypatch):
 
     assert len(result["draft"]["cv_bullets"]) == 5
     assert len(result["draft"]["interview_questions"]) == 10
+
+
+def test_urls_seen_only_counts_search_results():
+    """A URL counts only if search_web returned it, not if the AI merely wrote it."""
+    messages = [
+        ToolMessage(
+            content="Title: A\nURL: https://a.example\nSnippet: x\n\n"
+            "Title: B\nURL: https://b.example\nSnippet: y",
+            name="search_web",
+            tool_call_id="1",
+        ),
+        AIMessage(content="URL: https://made-up.example"),
+    ]
+    assert nodes.urls_seen(messages) == {"https://a.example", "https://b.example"}
+
+
+def test_real_research_keeps_only_real_sources(monkeypatch):
+    """Checks OUR code around the Deep Agent. The agent itself is a pretend one, so the
+    test never calls the AI or the web. This passes once TODOs 1 to 3 are done."""
+    monkeypatch.setenv("FAKE_LLM", "false")
+    nodes.get_settings.cache_clear()
+    monkeypatch.setattr(nodes, "get_model", lambda: "pretend-model")
+    seen = {}
+
+    class PretendAgent:
+        def invoke(self, payload, config):
+            seen["payload"], seen["config"] = payload, config
+            return {
+                "structured_response": CompanyBrief(
+                    company="Wrong Name",
+                    summary="Fernhill makes analytics software.",
+                    sources=["https://real.example", "https://invented.example"],
+                ),
+                "messages": [
+                    ToolMessage(content="Title: R\nURL: https://real.example\nSnippet: s",
+                                name="search_web", tool_call_id="1"),
+                ],
+            }
+
+    def pretend_create_deep_agent(**kwargs):
+        seen["kwargs"] = kwargs
+        return PretendAgent()
+
+    monkeypatch.setattr(nodes, "create_deep_agent", pretend_create_deep_agent)
+
+    brief = nodes.research({"company": "Fernhill Analytics"})["brief"]
+
+    assert brief["company"] == "Fernhill Analytics"  # our input, not the AI's
+    assert brief["summary"] == "Fernhill makes analytics software."
+    assert brief["sources"] == ["https://real.example"]  # the invented URL is dropped
+    assert seen["kwargs"]["response_format"] is CompanyBrief
+    assert seen["kwargs"]["tools"] == [nodes.search_web]
+    assert "<company>Fernhill Analytics</company>" in str(seen["payload"])
+    assert seen["config"]["recursion_limit"] == 50
