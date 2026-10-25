@@ -162,7 +162,7 @@ def get_run(
     # reveals which run IDs are real. "AND user_id = %s" is the tenant isolation.
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RunView(**row)
+    return RunView.model_validate(row)  # check the database row against RunView
 
 
 # TODO(Day 3): GET /runs/{run_id}/events, streaming run_events as Server-Sent Events.

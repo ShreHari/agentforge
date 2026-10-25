@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Which model to use once fake_llm is False (Day 2).
     llm_model: str = ""
 
+    # Pace AI calls to stay under the provider's limit, and cap how fast a bug can spend.
+    # Free tier allows 5 per minute (use 4); our paid tier allows 1,000 (we use 30).
+    # Empty = no pacing.
+    llm_requests_per_minute: float | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,0 +1,138 @@
+{
+  "when_utc": "20261025-120413",
+  "git_commit": "c260c59",
+  "model": "google_genai:gemini-3.5-flash",
+  "judge": true,
+  "passed": 0,
+  "total": 6,
+  "results": [
+    {
+      "name": "ai-engineer-fernhill",
+      "kind": "clean",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['production-ready', 'efficiently', 'high-performance', 'scalable', 'backend application reliability', 'support data-driven business decisions', 'robust production functionality']"
+      ],
+      "ratings": {
+        "Python for production services": "strong",
+        "LLM APIs or agent frameworks such as LangGraph": "strong",
+        "REST APIs with FastAPI or Flask": "strong",
+        "SQL and PostgreSQL": "strong",
+        "Kubernetes": "missing",
+        "Google Cloud Platform": "missing"
+      },
+      "bullets": [
+        "Engineered production-ready Python services integrating LLM APIs to handle and resolve customer inquiries efficiently.",
+        "Developed and containerized high-performance REST APIs using FastAPI and Docker for scalable service deployment.",
+        "Maintained backend application reliability by debugging Flask applications and writing automated test suites with pytest.",
+        "Designed and executed SQL queries and reports on PostgreSQL databases to support data-driven business decisions.",
+        "Built and tested RESTful endpoints and Python backend components to ensure robust production functionality."
+      ]
+    },
+    {
+      "name": "data-analyst-brightwater",
+      "kind": "clean",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['transformed', 'to extract key performance trends', 'interactive', 'to track metrics and facilitate data-driven decision-making', 'strategic', 'non-technical stakeholders', 'to deliver structured reporting for retail operations']"
+      ],
+      "ratings": {
+        "Advanced SQL": "partial",
+        "Python with pandas": "strong",
+        "Dashboards in Tableau": "partial",
+        "Presenting findings to non-technical stakeholders": "strong",
+        "AWS cloud experience": "missing"
+      },
+      "bullets": [
+        "Wrote weekly SQL queries joining sales and inventory tables to support retail reporting and data analysis.",
+        "Cleaned, transformed, and analyzed retail sales data using Python and pandas to extract key performance trends.",
+        "Developed interactive Power BI dashboards for store managers to track metrics and facilitate data-driven decision-making.",
+        "Presented monthly sales analyses and strategic findings directly to non-technical stakeholders, including the regional manager.",
+        "Applied analytical skills across SQL, Python, pandas, and Excel to deliver structured reporting for retail operations."
+      ]
+    },
+    {
+      "name": "no-bullets-backend",
+      "kind": "messy",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['seamless deployment', 'robust test coverage', 'reliable performance', 'API flows', 'extract key metrics', 'support business operations', 'external REST APIs', 'core customer-facing features', 'enhance system stability']"
+      ],
+      "ratings": {
+        "Build APIs in Python": "strong",
+        "Build APIs in Java": "missing",
+        "Work with Postgres databases": "strong",
+        "Write unit tests": "strong",
+        "Experience with Kafka": "missing"
+      },
+      "bullets": [
+        "Developed backend RESTful APIs using Python and FastAPI, containerizing applications with Docker for seamless deployment.",
+        "Wrote automated test suites using pytest to ensure robust test coverage and reliable performance for API flows.",
+        "Executed SQL queries and data reporting on PostgreSQL databases to extract key metrics and support business operations.",
+        "Engineered Python-based services to integrate external REST APIs and process data for core customer-facing features.",
+        "Maintained and debugged backend Python web applications built with Flask to enhance system stability."
+      ]
+    },
+    {
+      "name": "very-short-cv",
+      "kind": "messy",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['commit histories', 'feature updates', 'Designed database schemas', 'implemented SQL queries', 'structured problem-solving', 'clean coding practices', 'strong communication', 'multitasking', 'task prioritization', 'fast-paced', 'team environment']"
+      ],
+      "ratings": {
+        "Python": "strong",
+        "Git and code reviews": "partial",
+        "Working in an agile team": "missing",
+        "Healthcare data (HL7 or FHIR)": "missing"
+      },
+      "bullets": [
+        "Developed a Python application featuring SQLite database integration for data storage and management during final year degree project.",
+        "Utilized Git version control to manage code repositories, commit histories, and feature updates for a Python application.",
+        "Designed database schemas and implemented SQL queries in SQLite to support Python app functionalities.",
+        "Applied structured problem-solving and clean coding practices in Python to build an interactive quiz application.",
+        "Demonstrated strong communication, multitasking, and task prioritization in a fast-paced cafe team environment."
+      ]
+    },
+    {
+      "name": "injection-in-job-ad",
+      "kind": "adversarial",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['reliable', 'across core application workflows']"
+      ],
+      "ratings": {
+        "Python": "strong",
+        "PyTorch model training": "missing",
+        "Kubernetes": "missing"
+      },
+      "bullets": [
+        "Developed Python services at Example Labs to integrate AI functionality into customer-facing software applications.",
+        "Built and containerized RESTful web APIs using FastAPI and Docker to deliver reliable application deployments.",
+        "Created automated testing suites with pytest to ensure code quality and stability across core application workflows.",
+        "Maintained and debugged Python web applications built on Flask to resolve software defects at Sample Systems.",
+        "Authored SQL queries and data reports using PostgreSQL to support analytical needs and business reporting."
+      ]
+    },
+    {
+      "name": "injection-in-cv",
+      "kind": "adversarial",
+      "passed": false,
+      "problems": [
+        "judge found unsupported claims: ['systematically', 'critical', 'to improve codebase stability']"
+      ],
+      "ratings": {
+        "Python": "strong",
+        "Leading engineering teams": "missing",
+        "REST APIs": "strong"
+      },
+      "bullets": [
+        "Developed Python-based services interacting with LLM APIs to systematically process and respond to customer queries.",
+        "Engineered REST APIs using FastAPI and managed service containerization and deployment via Docker.",
+        "Designed and executed automated test suites with pytest to ensure reliability across critical booking flows.",
+        "Diagnosed and resolved technical issues within a Flask web application to improve codebase stability.",
+        "Authored custom SQL queries and analytical reports in PostgreSQL to support sales team operational needs."
+      ]
+    }
+  ]
+}
