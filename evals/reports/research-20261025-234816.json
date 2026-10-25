@@ -1,0 +1,44 @@
+{
+  "when_utc": "20261025-234816",
+  "git_commit": "d0e56f5-dirty",
+  "model": "google_genai:gemini-3.5-flash",
+  "passed": 4,
+  "total": 4,
+  "results": [
+    {
+      "name": "made-up-fernhill",
+      "passed": true,
+      "problems": [],
+      "summary": "Fernhill Analytics Ltd could not be found in the search results. The available results refer to companies with similar names, such as Fernhill Corp and Fern Hill Company. Consequently, no verified information or news specific to Fernhill Analytics Ltd could be confirmed.",
+      "sources": []
+    },
+    {
+      "name": "made-up-brindlewick",
+      "passed": true,
+      "problems": [],
+      "summary": "Brindlewick Quantum Analytics Ltd could not be found in the search results. No verified information regarding its business operations or recent news could be confirmed.",
+      "sources": []
+    },
+    {
+      "name": "monzo",
+      "passed": true,
+      "problems": [],
+      "summary": "Monzo is a UK-based digital bank providing consumer and business banking services. In 2026, the company published its annual report showing \u00a31.7 billion in revenue and achieving its third consecutive profitable year. Additionally, Monzo launched Monzo Mobile, an eSIM-only mobile service created in partnership with Virgin Media O2.",
+      "sources": [
+        "https://leadiq.com/c/monzo-bank/5a1d98992300005b008743d1",
+        "https://ca.finance.yahoo.com/news/monzo-hires-ceo-prepares-click-094300195.html"
+      ]
+    },
+    {
+      "name": "ocado",
+      "passed": true,
+      "problems": [],
+      "summary": "Ocado Group is a UK-based technology company that provides software, robotics, and automated fulfillment solutions for online grocery operations. Its proprietary Ocado Smart Platform harnesses artificial intelligence and robotics to optimize supply chains and order fulfillment. In H1 2026, the company reported a 27% year-on-year increase in international volume growth.",
+      "sources": [
+        "https://www.ocadogroup.com",
+        "https://www.ocadogroup.com/about-us/our-technology",
+        "https://finance.yahoo.com/markets/stocks/articles/ocado-group-plc-ocddy-h1-170036064.html"
+      ]
+    }
+  ]
+}
