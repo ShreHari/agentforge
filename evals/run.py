@@ -39,6 +39,10 @@ def check_ratings(case: Case, matches: list[RequirementMatch]) -> list[str]:
         for m in found:
             if m.strength not in allowed:
                 problems.append(f"'{m.requirement}' rated {m.strength}, expected {'/'.join(allowed)}")
+    for word in case.requirements_must_not_mention:
+        for m in matches:
+            if word in m.requirement.lower():
+                problems.append(f"'{m.requirement}' listed as a requirement, but it isn't one")
     return problems
 
 

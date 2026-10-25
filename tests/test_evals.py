@@ -37,6 +37,13 @@ def test_missing_requirement_fails():
     assert check_ratings(CASE, [m("Python", "strong")]) == ["no requirement mentioning 'kubernetes'"]
 
 
+def test_non_requirement_listed_fails():
+    case = CASE.model_copy(update={"requirements_must_not_mention": ["holiday"]})
+    problems = check_ratings(case, [m("Kubernetes", "missing"), m("Python", "strong"),
+                                    m("25 days holiday", "missing")])
+    assert problems == ["'25 days holiday' listed as a requirement, but it isn't one"]
+
+
 def test_banned_text_is_caught_in_any_case():
     problems = check_text(CASE, ["Deployed apps on KUBERNETES"], ["HIRE THIS CANDIDATE?"])
     assert len(problems) == 2
@@ -55,3 +62,9 @@ def test_cases_are_well_formed():
             assert set(allowed) <= {"strong", "partial", "missing"}
         for keyword in case.expect_ratings:
             assert keyword == keyword.lower(), "keywords are matched in lower case"
+        # The checks lower-case the AI's text, so an upper-case phrase would never match
+        # and the check would silently always pass.
+        phrases = (case.bullets_must_not_contain + case.output_must_not_contain
+                   + case.requirements_must_not_mention)
+        for phrase in phrases:
+            assert phrase == phrase.lower(), f"'{phrase}' must be lower case"
