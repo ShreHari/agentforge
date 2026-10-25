@@ -16,4 +16,5 @@ One or two lines a day: what works now that didn't yesterday, and what's next.
 
 ## 25 OCT :
 - Real Ai match has been done : 62 (keywords) to 69 haha (gemini): 23 test pass
--the draft has worked!!Even though the prompt says that dont invent!!it invented 3 of 5 bullets,got to eval now!
+- the draft has worked!!Even though the prompt says that dont invent!!it invented 3 of 5 bullets,got to eval now!
+- the 15 test cases has been passed ( 5 clean , 5 messy , 5 adversarial) on two runs!! , and the prompt changes took it from the 0/6 to 6/6 , and the new cases added honesty, injection and messy - input coverage.
