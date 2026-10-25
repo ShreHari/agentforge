@@ -5,8 +5,9 @@ If the checks were wrong, every eval score would be meaningless, so they get tes
 
 from typing import Literal
 
-from agent.schemas import RequirementMatch
+from agent.schemas import CompanyBrief, RequirementMatch
 from evals.cases import CASES, Case
+from evals.research import RESEARCH_CASES, ResearchCase, ResearchVerdict, check_research
 from evals.run import check_ratings, check_text
 
 CASE = Case(
@@ -68,3 +69,51 @@ def test_cases_are_well_formed():
                    + case.requirements_must_not_mention)
         for phrase in phrases:
             assert phrase == phrase.lower(), f"'{phrase}' must be lower case"
+
+
+# --- Research eval checks (no AI: the briefs and verdicts are made up) ---
+
+MADE_UP = ResearchCase(name="m", company="Nowhere Ltd", exists=False)
+REAL = ResearchCase(name="r", company="Monzo", exists=True, summary_mentions_any=["bank"])
+
+
+def verdict(not_found: bool, off_topic: list[str] | None = None) -> ResearchVerdict:
+    return ResearchVerdict(says_not_found=not_found, off_topic_sources=off_topic or [])
+
+
+def test_made_up_company_passes_when_not_found_with_no_sources():
+    brief = CompanyBrief(company="Nowhere Ltd", summary="Not found.", sources=[])
+    assert check_research(MADE_UP, brief, verdict(True)) == []
+
+
+def test_made_up_company_fails_when_sources_are_listed():
+    brief = CompanyBrief(company="Nowhere Ltd", summary="Not found.",
+                         sources=["https://other.example"])
+    assert check_research(MADE_UP, brief, verdict(True)) == [
+        "made-up company, but 1 sources were listed"
+    ]
+
+
+def test_real_company_passes_with_on_topic_sources():
+    brief = CompanyBrief(company="Monzo", summary="Monzo is a UK bank.",
+                         sources=["https://monzo.com/about"])
+    assert check_research(REAL, brief, verdict(False)) == []
+
+
+def test_real_company_fails_on_off_topic_source_and_missing_word():
+    brief = CompanyBrief(company="Monzo", summary="Monzo has an app.",
+                         sources=["https://monzo-cafe.example"])
+    problems = check_research(REAL, brief, verdict(False, ["https://monzo-cafe.example"]))
+    assert problems == [
+        "summary mentions none of ['bank']",
+        "sources about a different company: ['https://monzo-cafe.example']",
+    ]
+
+
+def test_research_cases_are_well_formed():
+    names = [c.name for c in RESEARCH_CASES]
+    assert len(names) == len(set(names))
+    for case in RESEARCH_CASES:
+        assert all(w == w.lower() for w in case.summary_mentions_any)
+        if not case.exists:
+            assert not case.summary_mentions_any, "made-up companies have no facts to mention"

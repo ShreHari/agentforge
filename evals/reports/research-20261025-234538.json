@@ -1,0 +1,64 @@
+{
+  "when_utc": "20261025-234538",
+  "git_commit": "6ff1169-dirty",
+  "model": "google_genai:gemini-3.5-flash",
+  "passed": 2,
+  "total": 4,
+  "results": [
+    {
+      "name": "made-up-fernhill",
+      "passed": false,
+      "problems": [
+        "made-up company, but 5 sources were listed",
+        "sources about a different company: ['https://fernhillcorp.com/about-us', 'https://www.otcmarkets.com/stock/FERN/news/Fernhill-Corp-Signs-Letter-of-Intent-to-Acquire-an-Institutional-Crypto-Trading-Platform-with-Proprietary-Algorithms-Sma?id=317938', 'https://www.linkedin.com/company/fernhill-corp', 'https://www.stocktitan.net/overview/FERN', 'https://fr.linkedin.com/company/fern-hill-company']"
+      ],
+      "summary": "Specific information for Fernhill Analytics Ltd could not be found in the search results. Search results returned details for separate entities such as Fernhill Corp, a Web3 FinTech holding company, and Fern Hill Company, a real estate firm. Because no matching records were found for Fernhill Analytics Ltd, its operations and news cannot be verified.",
+      "sources": [
+        "https://fernhillcorp.com/about-us",
+        "https://www.otcmarkets.com/stock/FERN/news/Fernhill-Corp-Signs-Letter-of-Intent-to-Acquire-an-Institutional-Crypto-Trading-Platform-with-Proprietary-Algorithms-Sma?id=317938",
+        "https://www.linkedin.com/company/fernhill-corp",
+        "https://www.stocktitan.net/overview/FERN",
+        "https://fr.linkedin.com/company/fern-hill-company"
+      ]
+    },
+    {
+      "name": "made-up-brindlewick",
+      "passed": false,
+      "problems": [
+        "made-up company, but 6 sources were listed",
+        "sources about a different company: ['https://www.mapquest.com/us/california/quantum-analytics-352808689', 'https://www.lqa.com/about-us', 'https://www.linkedin.com/company/quantum-analytics-group', 'https://www.brindleconsultinginc.com/after-hours', 'https://www.linkedin.com/company/brindle-bay-wealth-management', 'https://humanmade.co.jp/news/category/company']"
+      ],
+      "summary": "Brindlewick Quantum Analytics Ltd could not be found in the search results. The retrieved search results pertain to unrelated entities such as Quantum Analytics and Brindle Consulting Inc. Consequently, no verified facts regarding what the company does or its recent news are available.",
+      "sources": [
+        "https://www.mapquest.com/us/california/quantum-analytics-352808689",
+        "https://www.lqa.com/about-us",
+        "https://www.linkedin.com/company/quantum-analytics-group",
+        "https://www.brindleconsultinginc.com/after-hours",
+        "https://www.linkedin.com/company/brindle-bay-wealth-management",
+        "https://humanmade.co.jp/news/category/company"
+      ]
+    },
+    {
+      "name": "monzo",
+      "passed": true,
+      "problems": [],
+      "summary": "Monzo is a British online bank based in London that provides personal and business financial services, including current accounts, savings, loans, and credit cards. In June 2025, the company reported that its profit soared eightfold to \u00a3113.9 million as its customer base reached 12 million. During that period, Monzo also introduced new offerings such as Contents Insurance and Undo Payments.",
+      "sources": [
+        "https://en.wikipedia.org/wiki/Monzo",
+        "https://www.bloomberg.com/profile/company/1450489D:LN",
+        "https://fintech.global/2025/06/02/monzos-profit-soars-8x-to-113-9m-as-customer-base-hits-12m"
+      ]
+    },
+    {
+      "name": "ocado",
+      "passed": true,
+      "problems": [],
+      "summary": "Ocado Group plc is a UK-based technology and logistics business that develops automated storage, e-commerce, and fulfillment solutions for online grocery retail. The company licenses its proprietary technology platform, the Ocado Smart Platform, to international grocery partners. In August 2026, Ocado Group confirmed a partnership with nemlig, Denmark's largest pure-play online supermarket, to provide its automated retail technology.",
+      "sources": [
+        "https://www.investing.com/equities/ocado-group-company-profile",
+        "https://www.ocadogroup.com/newsroom/news/ocado-confirms-nemlig-as-its-latest-european-partner",
+        "https://www.reuters.com/business/retail-consumer/ocado-confirms-denmarks-nemlig-latest-european-partner-2026-08-20"
+      ]
+    }
+  ]
+}
