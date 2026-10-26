@@ -55,6 +55,8 @@ def signed_in():
 def fake_mode(monkeypatch):
     """Every test runs in fake mode with no crash points, whatever your .env says."""
     monkeypatch.setenv("FAKE_LLM", "true")
+    # Tests create many runs as one user; only the limit test sets a low limit.
+    monkeypatch.setenv("RUNS_PER_HOUR_PER_USER", "1000000")
     monkeypatch.delenv("CRASH_AT", raising=False)
     get_settings.cache_clear()  # make get_settings() re-read the environment
     yield

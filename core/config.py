@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # Clients. Empty = nobody can sign in (the api refuses every request: fail closed).
     google_client_id: str = ""
 
+    # Each run costs AI calls and web searches, so one person (or a bug) mustn't be able
+    # to start hundreds. Above this, POST /runs answers 429 "too many requests".
+    runs_per_hour_per_user: int = 10
+
 
 @lru_cache
 def get_settings() -> Settings:

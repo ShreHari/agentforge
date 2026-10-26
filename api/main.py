@@ -209,6 +209,19 @@ def create_run(
 
     # One transaction: all three inserts happen, or none of them do.
     with pool.connection() as conn, conn.transaction():
+        # The per-user limit. Two requests at the very same moment could both slip under
+        # it; that's fine for a cost guard (it's a speed bump, not a bank balance).
+        limit = get_settings().runs_per_hour_per_user
+        recent = conn.execute(
+            "SELECT count(*) AS n FROM runs "
+            "WHERE user_id = %s AND created_at > now() - interval '1 hour'",
+            (user_id,),
+        ).fetchone()
+        if recent and recent["n"] >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail=f"You've started {limit} runs in the last hour. Please try again later.",
+            )
         conn.execute(
             "INSERT INTO users (id) VALUES (%s) ON CONFLICT (id) DO NOTHING", (user_id,)
         )

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app, get_current_user
+from core.config import get_settings
 
 
 @pytest.fixture
@@ -71,3 +72,17 @@ def test_a_failed_publish_still_saves_the_run(database_url, client, job_ad, cv, 
     created = client.post("/runs", json={"job_ad": job_ad, "cv": cv})
     assert created.status_code == 202
     assert client.get(f"/runs/{created.json()['run_id']}").json()["status"] == "queued"
+
+
+def test_too_many_runs_in_an_hour_are_refused(database_url, client, job_ad, cv, monkeypatch):
+    monkeypatch.setenv("RUNS_PER_HOUR_PER_USER", "2")
+    get_settings.cache_clear()
+    busy_user = f"busy-user-{uuid.uuid4()}"  # one user for all three requests
+    app.dependency_overrides[get_current_user] = lambda: busy_user
+    body = {"job_ad": job_ad, "cv": cv}
+
+    assert client.post("/runs", json=body).status_code == 202
+    assert client.post("/runs", json=body).status_code == 202
+    third = client.post("/runs", json=body)
+    assert third.status_code == 429
+    assert "try again later" in third.json()["detail"]
