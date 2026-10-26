@@ -16,13 +16,14 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
 
-from agent.schemas import JobHuntInput
+from agent.schemas import MAX_CV_CHARS, JobHuntInput
+from api.parse import MAX_BYTES, ParseError, extract_text
 from core.config import get_settings
 
 RunStatus = Literal["queued", "running", "succeeded", "failed"]
@@ -73,6 +74,12 @@ class RunCreated(BaseModel):
     status: RunStatus
 
 
+class ParsedCV(BaseModel):
+    text: str
+    characters: int
+    too_long: bool  # over the limit for a run: the user must shorten it before running
+
+
 class RunView(BaseModel):
     run_id: UUID
     status: RunStatus
@@ -110,6 +117,29 @@ def readyz(response: Response, pool: ConnectionPool = Depends(get_pool)) -> dict
         response.status_code = 503
         return {"status": "not ready", "reason": "database unreachable"}
     return {"status": "ready"}
+
+
+# --- CV upload ---
+
+
+@app.post("/parse", dependencies=[Depends(get_current_user)])
+def parse_cv(file: UploadFile) -> ParsedCV:
+    """Turn an uploaded PDF or Word CV into text, for the user to check before a run.
+
+    Nothing is stored: the file is read, turned into text and thrown away.
+
+    This is a plain `def`, not `async def`, on purpose. Reading a PDF keeps the CPU busy;
+    FastAPI runs plain functions in a separate thread, so one big PDF can't freeze the
+    api for everyone else. Signed-in users only, so strangers can't use it for free.
+    """
+    data = file.file.read(MAX_BYTES + 1)  # read at most 1 byte past the limit, never more
+    if len(data) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="The file is too big. The limit is 2 MB.")
+    try:
+        text = extract_text(data)
+    except ParseError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return ParsedCV(text=text, characters=len(text), too_long=len(text) > MAX_CV_CHARS)
 
 
 # --- Runs ---
