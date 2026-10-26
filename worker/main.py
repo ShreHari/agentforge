@@ -35,7 +35,19 @@ def claim_run(conn, run_id: UUID, lease_seconds: int = 120) -> bool:
     Why one UPDATE and not "SELECT, then UPDATE"? Two workers could both read 'queued'
     before either writes. A single conditional UPDATE can't be won twice.
     """
-    raise NotImplementedError("TODO(Day 4): claim_run")
+    cursor = conn.execute(
+        """
+        UPDATE runs
+        SET status = 'running',
+            attempt = attempt + 1,
+            lease_until = now() + make_interval(secs => %s),
+            updated_at = now()
+        WHERE id = %s
+          AND (status = 'queued' OR (status = 'running' AND lease_until < now()))
+        """,
+        (lease_seconds, run_id),
+    )
+    return cursor.rowcount == 1
 
 
 def renew_lease(conn, run_id: UUID, lease_seconds: int = 120) -> None:
