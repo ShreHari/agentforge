@@ -36,7 +36,9 @@ COPY --from=build --chown=app:app /app /app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
-USER app
+# A number, not the name "app": Kubernetes' runAsNonRoot check can only prove a NUMERIC
+# user isn't root (with a name, every pod fails with CreateContainerConfigError).
+USER 10001
 
 # Fail the BUILD, not the deploy, if a package is missing.
 RUN python -c "import api.main, worker.main, worker.sweeper"
