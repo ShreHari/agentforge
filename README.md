@@ -1,6 +1,6 @@
 # AgentForge
 
-**Live: https://34-102-210-23.sslip.io** (Google sign-in; while in testing, ask me to add your Gmail)
+**Live: https://34-102-210-23.sslip.io** 
 
 A low-code agent platform, being built in public to production standards. Its first agent
 is the **Job Hunt Agent**: add a CV and a job ad, and it researches the company, rates how
