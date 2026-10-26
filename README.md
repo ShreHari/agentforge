@@ -1,5 +1,7 @@
 # AgentForge
 
+**Live: https://34-102-210-23.sslip.io** (Google sign-in; while in testing, ask me to add your Gmail)
+
 A low-code agent platform, being built in public to production standards. Its first agent
 is the **Job Hunt Agent**: add a CV and a job ad, and it researches the company, rates how
 well the CV matches each requirement, and drafts tailored CV bullets and likely interview
@@ -29,9 +31,33 @@ are measured by evals, not trusted.
 | Google sign-in: every request carries a Google ID token, checked by the api | ✅ Fails closed if not configured |
 | Per-user limit: 10 runs an hour (429 above it), so no one can run up the AI bill | ✅ |
 | Privacy: emails, phone numbers and links removed before saving or the AI; "delete this run" removes everything incl. checkpoints; auto-delete after 30 days | ✅ |
-| Docker images, Kubernetes on GKE, load tests, real users | ⬜ Planned |
+| Web page: live step-by-step progress, match-score gauge, copy buttons, dark mode, phone layout | ✅ |
+| One Docker image (multi-stage, non-root) for the api, the worker and the sweeper | ✅ |
+| **Deployed on GKE Autopilot** (London): Cloud SQL, Pub/Sub, Workload Identity, managed HTTPS | ✅ Live, see the link above |
+| Graceful shutdown on Kubernetes (preStop + SIGTERM hand-back, proxy as a native sidecar) | ✅ |
+| Load test (1,000 users), CI before each deploy, scaling workers on queue backlog (KEDA) | ⬜ Next |
 
-127 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Users sign in with Google; the api stores only their Google account ID.
+128 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Users sign in with Google; the api stores only their Google account ID.
+
+## How it runs in production
+
+```
+Browser ──HTTPS──► Google load balancer (static IP, managed certificate)
+                        │
+                        ▼
+                  api pods (2-3, autoscaled) ──run ID──► Pub/Sub "runs"
+                        │                                     │
+                        ▼                                     ▼
+                  Cloud SQL Postgres ◄────────────── worker pods (2) ──► Gemini, Tavily
+                        ▲
+                  sweeper (CronJob, every minute)
+```
+
+- **One image, three jobs:** api, worker and sweeper are the same tested image with different start commands.
+- **No key files:** pods reach Pub/Sub and Cloud SQL through Workload Identity, with least-privilege roles. API keys live in Secret Manager (London only).
+- **Database access:** through the Cloud SQL Auth Proxy as a *native sidecar*. It starts before the app and stops after it, so a worker that's shutting down can still hand its run back.
+- **Zero-downtime deploys:** rolling updates, readiness on `/readyz`, liveness on `/healthz`, a `preStop` pause so the load balancer drains first, and PodDisruptionBudgets.
+- **Deploying:** `./deploy/deploy.sh` builds the commit's image (tagged with the commit), then applies `k8s/` with Kustomize. Changed settings or secrets roll the pods automatically. Details and design notes are in [`deploy/README.md`](deploy/README.md).
 
 ## Evidence: what the evals found
 
@@ -63,6 +89,8 @@ docker compose up -d             # start Postgres (port 5433) and the Pub/Sub em
 uv run python -m core.db         # create the tables
 uv run pytest                    # all tests should pass
 ```
+
+Or run the whole app in containers, as in production: `docker compose --profile app up --build`.
 
 Tests always run in fake mode: no AI calls, no keys, no cost.
 
@@ -124,10 +152,13 @@ exactly one row.
 | `api/main.py` | FastAPI: the web page, `/parse`, `/runs`, health checks |
 | `api/parse.py` | CV files to text, with safety limits |
 | `web/index.html` | The web page (no build step) |
-| `worker/` | Claims runs from the queue and runs the agent (in progress) |
+| `worker/` | The worker (claims runs from Pub/Sub, runs or resumes the graph) and the sweeper |
 | `evals/` | Eval cases, the LLM judge, and saved reports |
 | `core/`, `db/schema.sql` | Settings and tables: users, runs, run_events, tracker |
 | `tests/` | Unit tests, plus integration tests that skip without Postgres |
+| `Dockerfile`, `docker-compose.yml` | The image, and the local stack (Postgres, Pub/Sub emulator, app) |
+| `k8s/base/` | Kubernetes: api, worker, sweeper CronJob, migrate Job, Ingress with HTTPS |
+| `deploy/` | `setup-once.sh` (Cloud SQL user, secrets, IAM, IP) and `deploy.sh` |
 | `practice/` | Learning exercises, kept separate from the app |
 
 ## Design decisions
@@ -169,4 +200,5 @@ This is at-least-once execution with idempotent side effects, not "exactly once"
 | api logs `error connecting in 'pool-1'` | Postgres is down; the api keeps retrying, `/readyz` returns 503 |
 | Tests show `s` (skipped) | Normal when Postgres or the Pub/Sub emulator isn't running |
 | "Please sign in" or 401 errors | Sign in again (tokens last 1 hour); check `GOOGLE_CLIENT_ID` and that you opened `localhost`, not `127.0.0.1` |
-| Runs stay `queued` | The worker isn't running, or the emulator restarted and lost its messages (re-run the run) |
+| Runs stay `queued` | The worker isn't running, or the emulator restarted and lost its messages (the sweeper re-publishes after 5 minutes) |
+| GKE pods `CreateContainerConfigError` | `kubectl -n agentforge describe pod <name>`: usually a missing setting, or a non-numeric `USER` in the Dockerfile |
