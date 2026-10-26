@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     runs_topic: str = "runs"  # where the api puts new run IDs
     runs_subscription: str = "runs-workers"  # where workers take them from
 
+    # Google sign-in: the "Client ID" from Google Cloud console, Google Auth Platform,
+    # Clients. Empty = nobody can sign in (the api refuses every request: fail closed).
+    google_client_id: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

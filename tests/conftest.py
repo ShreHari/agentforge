@@ -41,6 +41,17 @@ def published(monkeypatch) -> list:
 
 
 @pytest.fixture(autouse=True)
+def signed_in():
+    """Most tests act as one signed-in user, "test-user", without a real Google token.
+    tests/test_auth.py switches this off to test sign-in itself."""
+    from api.main import app, get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: "test-user"
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture(autouse=True)
 def fake_mode(monkeypatch):
     """Every test runs in fake mode with no crash points, whatever your .env says."""
     monkeypatch.setenv("FAKE_LLM", "true")

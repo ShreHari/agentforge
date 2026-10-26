@@ -24,10 +24,13 @@ are measured by evals, not trusted.
 | Worker: claim with lease, renew, run or resume the graph, finish | ✅ Race-safe; tested with two workers at once and a worker dying mid-run |
 | Queue: Pub/Sub (emulator on a laptop), ack only after the result is saved | ✅ Duplicate messages are harmless |
 | Sweeper: re-queues runs whose worker died or whose message was lost; fails "poison" runs after 3 tries | ✅ |
-| Sign-in, retries, graceful shutdown, privacy basics | ⬜ Planned |
+| Retries on temporary AI and search errors (429, 5xx, timeouts) only | ✅ |
+| Graceful shutdown: on SIGTERM, stop between steps and hand the run back | ✅ Tested with a real worker process |
+| Google sign-in: every request carries a Google ID token, checked by the api | ✅ Fails closed if not configured |
+| Privacy basics (contact details kept from the AI, retention, deletion) | ⬜ Next |
 | Docker images, Kubernetes on GKE, load tests, real users | ⬜ Planned |
 
-84 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Sign-in is still a placeholder (`dev-user`).
+114 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Users sign in with Google; the api stores only their Google account ID.
 
 ## Evidence: what the evals found
 
@@ -83,7 +86,10 @@ uv run python -m worker.main             # terminal 2: the worker
 uv run python -m worker.sweeper --loop   # terminal 3 (optional): re-queue stuck runs
 ```
 
-Open http://127.0.0.1:8000. The api docs are at http://127.0.0.1:8000/docs.
+Open http://localhost:8000 (Google sign-in doesn't allow 127.0.0.1). The api docs are at
+http://localhost:8000/docs. Sign-in needs `GOOGLE_CLIENT_ID` in `.env`: a Web application
+client from Google Cloud console, Google Auth Platform, Clients, with `http://localhost`
+and `http://localhost:8000` as authorized JavaScript origins.
 
 A run's journey: the page posts to `/runs`; the api saves the run as `queued` and
 publishes its ID to Pub/Sub; the worker pulls the message, claims the run with a lease,
@@ -161,4 +167,5 @@ This is at-least-once execution with idempotent side effects, not "exactly once"
 | `429 RESOURCE_EXHAUSTED` from Gemini | Too many requests a minute: set `LLM_REQUESTS_PER_MINUTE` in `.env` |
 | api logs `error connecting in 'pool-1'` | Postgres is down; the api keeps retrying, `/readyz` returns 503 |
 | Tests show `s` (skipped) | Normal when Postgres or the Pub/Sub emulator isn't running |
+| "Please sign in" or 401 errors | Sign in again (tokens last 1 hour); check `GOOGLE_CLIENT_ID` and that you opened `localhost`, not `127.0.0.1` |
 | Runs stay `queued` | The worker isn't running, or the emulator restarted and lost its messages (re-run the run) |

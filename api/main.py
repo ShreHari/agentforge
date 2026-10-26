@@ -18,7 +18,15 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -26,6 +34,7 @@ from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
 
 from agent.schemas import MAX_CV_CHARS, JobHuntInput
+from api.auth import user_id_from_token
 from api.parse import MAX_BYTES, ParseError, extract_text
 from core.config import get_settings
 from core.queue import publish_run
@@ -69,14 +78,25 @@ def get_pool(request: Request) -> ConnectionPool:
     return request.app.state.pool
 
 
-def get_current_user() -> str:
-    """Who is calling.
+def get_current_user(authorization: str | None = Header(default=None)) -> str:
+    """Who is calling: the Google account ID from the sign-in token (see api/auth.py).
 
-    TODO(Day 3): verify the Google ID token from the Authorization header and return the
-    account's ID. Until then everyone is 'dev-user'. Because every endpoint gets the user
-    through this one function, swapping in real sign-in is a one-place change.
+    Every endpoint that touches a user's data gets the user through this one function.
+    No valid token means 401, so the request never reaches any data.
     """
-    return "dev-user"
+    client_id = get_settings().google_client_id
+    if not client_id:
+        # Fail CLOSED: if sign-in isn't set up, nobody gets in. Never fall back to a
+        # shared "dev-user", or every visitor would see every CV.
+        raise HTTPException(status_code=503, detail="Sign-in isn't set up on this server.")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Please sign in.",
+                            headers={"WWW-Authenticate": "Bearer"})
+    try:
+        return user_id_from_token(authorization.removeprefix("Bearer "), client_id)
+    except ValueError as error:  # forged, expired, or issued for another website
+        raise HTTPException(status_code=401, detail="Your sign-in has expired. Please sign in again.",
+                            headers={"WWW-Authenticate": "Bearer"}) from error
 
 
 # --- Response shapes (FastAPI also uses these to build the /docs page) ---
@@ -107,9 +127,20 @@ class RunView(BaseModel):
 
 
 @app.get("/", include_in_schema=False)  # include_in_schema=False: keep it off the /docs page
-def home() -> FileResponse:
+def home(request: Request) -> FileResponse:
     """The whole UI is one HTML page. Its JavaScript calls /parse and /runs, like any client."""
-    return FileResponse(WEB_PAGE)
+    # Google's sign-in button needs to see which site it's on. Over plain http (your
+    # laptop) Google asks for this looser setting; over https, the recommended stricter one.
+    policy = ("no-referrer-when-downgrade" if request.url.scheme == "http"
+              else "strict-origin-when-cross-origin")
+    return FileResponse(WEB_PAGE, headers={"Referrer-Policy": policy})
+
+
+@app.get("/config")
+def config() -> dict:
+    """Public settings the page needs. A Google client ID isn't a secret: every site
+    with a Google sign-in button shows its client ID in the page."""
+    return {"google_client_id": get_settings().google_client_id}
 
 
 # --- Health checks, used by Kubernetes on Day 6 ---

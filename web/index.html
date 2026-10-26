@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentForge · Job Hunt Agent</title>
+<!-- Google's sign-in library. It draws the "Sign in with Google" button. -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6677; --line: #dde1e8;
@@ -48,8 +50,12 @@
   .strong { color: var(--good); } .partial { color: var(--mid); } .missing { color: var(--bad); }
   .evidence { color: var(--muted); font-size: 0.88rem; }
   a { color: var(--accent); word-break: break-all; }
-  .hidden { display: none; }
+  .hidden { display: none !important; }  /* "hidden" always wins over any layout rule */
   footer { color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+  .account { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+             color: var(--muted); font-size: 0.9rem; margin-bottom: 16px; }
+  .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer;
+          font: inherit; text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -58,6 +64,20 @@
   <p class="lead">Add your CV and a job ad. The agent researches the company, rates how well
     your CV matches, and drafts CV bullets and likely interview questions.</p>
 
+  <section class="card" id="signin">
+    <h2>Sign in to start</h2>
+    <p class="hint">Sign in with your Google account, so only you can see your CVs and results.
+      We never see your password, and we store only your Google account ID.</p>
+    <div id="google-button"></div>
+    <p class="message" id="signin-message"></p>
+  </section>
+
+  <div class="account hidden" id="account">
+    <span id="who"></span>
+    <button class="link" id="sign-out">Sign out</button>
+  </div>
+
+  <div class="hidden" id="app">
   <section class="card">
     <h2>1. Your CV</h2>
     <div class="row">
@@ -102,6 +122,8 @@
     <ul id="questions"></ul>
   </section>
 
+  </div>
+
   <footer>Your CV and the job ad are processed by an AI model (Google Gemini) to produce these
     results. Prototype: check every suggestion before you use it.</footer>
 </main>
@@ -144,7 +166,7 @@ $("cv-file").addEventListener("change", async () => {
   const form = new FormData();
   form.append("file", file);
   try {
-    const response = await fetch("/parse", { method: "POST", body: form });
+    const response = await api("/parse", { method: "POST", body: form });
     const body = await response.json();
     if (!response.ok) return say($("cv-message"), errorText(body), true);
     $("cv").value = body.text;
@@ -165,7 +187,7 @@ $("run").addEventListener("click", async () => {
   ["results", "results-match", "results-draft"].forEach((id) => $(id).classList.add("hidden"));
   $("run").disabled = true;
   try {
-    const response = await fetch("/runs", {
+    const response = await api("/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cv: $("cv").value, job_ad: $("job-ad").value }),
@@ -192,7 +214,7 @@ const LABELS = {
 };
 async function watch(runId) {
   try {
-    const response = await fetch(`/runs/${runId}`);
+    const response = await api(`/runs/${runId}`);
     const run = await response.json();
     if (!response.ok) throw new Error(errorText(run));
     $("status").textContent = LABELS[run.status] || run.status;
@@ -202,7 +224,7 @@ async function watch(runId) {
       $("run").disabled = false;
       return;
     }
-    setTimeout(() => watch(runId), 2000);
+    if (idToken) setTimeout(() => watch(runId), 2000);  // stop asking once signed out
   } catch (error) {
     say($("run-message"), `Lost track of the run: ${error.message}`, true);
     $("run").disabled = false;
@@ -263,8 +285,74 @@ function finish(result) {
   ["results", "results-match", "results-draft"].forEach((id) => $(id).classList.remove("hidden"));
 }
 
+// --- Sign-in ---------------------------------------------------------------------------
+// The Google ID token: proof of who you are, valid for 1 hour. Kept in memory only, so it's
+// gone when the tab closes. The SERVER checks it on every request (api/auth.py).
+let idToken = null;
+
+// Every call to our api goes through here, so every call carries the token.
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}), Authorization: `Bearer ${idToken}` };
+  const response = await fetch(path, { ...options, headers });
+  if (response.status === 401) showSignIn("Your sign-in has expired. Please sign in again.");
+  return response;
+}
+
+// Only to show your first name. Trusting it would be unsafe; the server never does.
+// A token is three parts joined by dots; the middle one holds the details, base64-encoded.
+function firstNameIn(token) {
+  try {
+    let part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    part += "=".repeat((4 - (part.length % 4)) % 4);
+    const bytes = Uint8Array.from(atob(part), (c) => c.charCodeAt(0));
+    const claims = JSON.parse(new TextDecoder().decode(bytes));
+    return claims.given_name || claims.name || null;
+  } catch {
+    return null;
+  }
+}
+
+function onSignedIn(response) {  // Google calls this with the new token
+  idToken = response.credential;
+  const name = firstNameIn(idToken);
+  $("who").textContent = name ? `Signed in as ${name}` : "Signed in";
+  $("signin").classList.add("hidden");
+  $("account").classList.remove("hidden");
+  $("app").classList.remove("hidden");
+}
+
+function showSignIn(message = "") {
+  idToken = null;
+  $("app").classList.add("hidden");
+  $("account").classList.add("hidden");
+  $("signin").classList.remove("hidden");
+  say($("signin-message"), message, Boolean(message));
+}
+
+$("sign-out").addEventListener("click", () => {
+  if (window.google) google.accounts.id.disableAutoSelect();
+  showSignIn();
+});
+
+async function startSignIn() {
+  if (location.hostname === "127.0.0.1") {
+    return say($("signin-message"),
+      "Google sign-in only works on http://localhost:8000. Please open that address instead.", true);
+  }
+  const config = await (await fetch("/config")).json();
+  if (!config.google_client_id) {
+    return say($("signin-message"), "Sign-in isn't set up on this server yet.", true);
+  }
+  while (!window.google?.accounts?.id) {  // wait for Google's script to finish loading
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  google.accounts.id.initialize({ client_id: config.google_client_id, callback: onSignedIn });
+  google.accounts.id.renderButton($("google-button"), { theme: "outline", size: "large" });
+}
+
 showCount($("cv"), $("cv-count"), CV_LIMIT);
 showCount($("job-ad"), $("job-count"), JOB_AD_LIMIT);
+startSignIn();
 </script>
 </body>
 </html>
