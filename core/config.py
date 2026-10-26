@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Where Postgres is. This default matches docker-compose.yml.
-    database_url: str = "postgresql://agentforge:agentforge@localhost:5432/agentforge"
+    database_url: str = "postgresql://agentforge:agentforge@localhost:5433/agentforge"
 
     # True = the agent uses fake logic (no AI calls, no API keys, no cost).
     # Day 2 adds the real model calls; until then, keep this True.
