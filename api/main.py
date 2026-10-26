@@ -13,10 +13,12 @@ a worker picks the run up later (Day 4). That's why POST /runs returns 202 Accep
 
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
@@ -27,6 +29,7 @@ from api.parse import MAX_BYTES, ParseError, extract_text
 from core.config import get_settings
 
 RunStatus = Literal["queued", "running", "succeeded", "failed"]
+WEB_PAGE = Path(__file__).resolve().parents[1] / "web" / "index.html"
 
 
 @asynccontextmanager
@@ -88,6 +91,15 @@ class RunView(BaseModel):
     result: dict | None
     created_at: datetime
     updated_at: datetime
+
+
+# --- The web page ---
+
+
+@app.get("/", include_in_schema=False)  # include_in_schema=False: keep it off the /docs page
+def home() -> FileResponse:
+    """The whole UI is one HTML page. Its JavaScript calls /parse and /runs, like any client."""
+    return FileResponse(WEB_PAGE)
 
 
 # --- Health checks, used by Kubernetes on Day 6 ---

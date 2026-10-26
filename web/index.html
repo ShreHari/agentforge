@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentForge · Job Hunt Agent</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6677; --line: #dde1e8;
+    --accent: #2457d6; --accent-text: #ffffff; --good: #1f7a45; --mid: #9a6400; --bad: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e7eaf0; --muted: #9aa3b2; --line: #2d3442;
+      --accent: #7aa2ff; --accent-text: #0d1220; --good: #6fd39a; --mid: #f0b75a; --bad: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  .lead { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 20px; margin-bottom: 16px; }
+  textarea { width: 100%; min-height: 180px; padding: 12px; border: 1px solid var(--line);
+             border-radius: 8px; background: var(--bg); color: var(--text); font: inherit;
+             font-size: 0.92rem; resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .hint, .count { color: var(--muted); font-size: 0.88rem; }
+  .count.over { color: var(--bad); font-weight: 600; }
+  button, .file-label { border: 0; border-radius: 8px; padding: 10px 18px; font: inherit;
+                        font-weight: 600; cursor: pointer; }
+  .primary { background: var(--accent); color: var(--accent-text); }
+  .primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .file-label { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+  input[type=file] { display: none; }
+  .message { margin-top: 10px; font-size: 0.92rem; }
+  .message.error { color: var(--bad); }
+  .status { font-weight: 600; }
+  .score { font-size: 2.4rem; font-weight: 700; line-height: 1; }
+  ul { padding-left: 20px; margin: 8px 0 0; }
+  li { margin-bottom: 6px; }
+  .match { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .match:first-child { border-top: 0; }
+  .tag { flex: none; width: 70px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+  .strong { color: var(--good); } .partial { color: var(--mid); } .missing { color: var(--bad); }
+  .evidence { color: var(--muted); font-size: 0.88rem; }
+  a { color: var(--accent); word-break: break-all; }
+  .hidden { display: none; }
+  footer { color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Job Hunt Agent</h1>
+  <p class="lead">Add your CV and a job ad. The agent researches the company, rates how well
+    your CV matches, and drafts CV bullets and likely interview questions.</p>
+
+  <section class="card">
+    <h2>1. Your CV</h2>
+    <div class="row">
+      <label class="file-label" for="cv-file">Upload PDF or Word</label>
+      <input type="file" id="cv-file" accept=".pdf,.docx">
+      <span class="hint">or paste the text below</span>
+    </div>
+    <textarea id="cv" placeholder="Your CV as text"></textarea>
+    <div class="row"><span class="count" id="cv-count"></span></div>
+    <p class="hint">Check this text: it is exactly what the AI will read. Fix anything that came
+      out jumbled.</p>
+    <p class="message" id="cv-message"></p>
+  </section>
+
+  <section class="card">
+    <h2>2. The job ad</h2>
+    <textarea id="job-ad" placeholder="Paste the job ad here"></textarea>
+    <div class="row"><span class="count" id="job-count"></span></div>
+  </section>
+
+  <div class="row">
+    <button class="primary" id="run">Run the agent</button>
+    <span class="status" id="status"></span>
+  </div>
+  <p class="message" id="run-message"></p>
+
+  <section class="card hidden" id="results">
+    <h2>Company research</h2>
+    <p id="brief"></p>
+    <ul id="sources"></ul>
+  </section>
+  <section class="card hidden" id="results-match">
+    <h2>Match</h2>
+    <div class="score" id="score"></div>
+    <p class="hint">out of 100</p>
+    <div id="matches"></div>
+  </section>
+  <section class="card hidden" id="results-draft">
+    <h2>Tailored CV bullets</h2>
+    <ul id="bullets"></ul>
+    <h2 style="margin-top:20px">Likely interview questions</h2>
+    <ul id="questions"></ul>
+  </section>
+
+  <footer>Your CV and the job ad are processed by an AI model (Google Gemini) to produce these
+    results. Prototype: check every suggestion before you use it.</footer>
+</main>
+
+<script>
+// SECURITY: everything shown on this page uses textContent, never innerHTML. The AI's output
+// can contain text copied from a job ad or a web page, and with innerHTML a hidden
+// <script> in that text would run in the user's browser (cross-site scripting).
+const $ = (id) => document.getElementById(id);
+const CV_LIMIT = 15000;      // same limits as agent/schemas.py
+const JOB_AD_LIMIT = 20000;
+
+function showCount(textarea, label, limit) {
+  const n = textarea.value.trim().length;
+  label.textContent = `${n.toLocaleString()} / ${limit.toLocaleString()} characters`;
+  label.classList.toggle("over", n > limit);
+}
+$("cv").addEventListener("input", () => showCount($("cv"), $("cv-count"), CV_LIMIT));
+$("job-ad").addEventListener("input", () => showCount($("job-ad"), $("job-count"), JOB_AD_LIMIT));
+
+function say(element, text, isError = false) {
+  element.textContent = text;
+  element.classList.toggle("error", isError);
+}
+
+// FastAPI's error "detail" is either a sentence or a list of field problems.
+function errorText(body) {
+  if (typeof body.detail === "string") return body.detail;
+  if (Array.isArray(body.detail)) {
+    return body.detail.map((d) => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(" · ");
+  }
+  return "Something went wrong.";
+}
+
+// Step 1: upload a file -> POST /parse -> put the text in the box for the user to check.
+$("cv-file").addEventListener("change", async () => {
+  const file = $("cv-file").files[0];
+  if (!file) return;
+  say($("cv-message"), `Reading ${file.name}...`);
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const response = await fetch("/parse", { method: "POST", body: form });
+    const body = await response.json();
+    if (!response.ok) return say($("cv-message"), errorText(body), true);
+    $("cv").value = body.text;
+    showCount($("cv"), $("cv-count"), CV_LIMIT);
+    say($("cv-message"), body.too_long
+      ? "Your CV is over the limit. Please shorten it before running." : "Done. Please check the text.",
+      body.too_long);
+  } catch {
+    say($("cv-message"), "Couldn't reach the server.", true);
+  } finally {
+    $("cv-file").value = "";  // lets the same file be chosen again
+  }
+});
+
+// Step 2: POST /runs -> the api replies at once with a run ID; the agent runs elsewhere.
+$("run").addEventListener("click", async () => {
+  say($("run-message"), "");
+  ["results", "results-match", "results-draft"].forEach((id) => $(id).classList.add("hidden"));
+  $("run").disabled = true;
+  try {
+    const response = await fetch("/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cv: $("cv").value, job_ad: $("job-ad").value }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      say($("run-message"), errorText(body), true);
+      $("run").disabled = false;
+      return;
+    }
+    watch(body.run_id);
+  } catch {
+    say($("run-message"), "Couldn't reach the server.", true);
+    $("run").disabled = false;
+  }
+});
+
+// Step 3: ask GET /runs/{id} every 2 seconds until the run finishes.
+const LABELS = {
+  queued: "Queued: waiting for a worker to pick it up...",
+  running: "Running: researching, matching and drafting...",
+  succeeded: "Done.",
+  failed: "Failed.",
+};
+async function watch(runId) {
+  try {
+    const response = await fetch(`/runs/${runId}`);
+    const run = await response.json();
+    if (!response.ok) throw new Error(errorText(run));
+    $("status").textContent = LABELS[run.status] || run.status;
+    if (run.status === "succeeded") return finish(run.result);
+    if (run.status === "failed") {
+      say($("run-message"), run.error || "The run failed.", true);
+      $("run").disabled = false;
+      return;
+    }
+    setTimeout(() => watch(runId), 2000);
+  } catch (error) {
+    say($("run-message"), `Lost track of the run: ${error.message}`, true);
+    $("run").disabled = false;
+  }
+}
+
+function fillList(list, items) {
+  list.replaceChildren(...items.map((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    return li;
+  }));
+}
+
+// The result has the same keys as the agent's state: brief, match and draft.
+function finish(result) {
+  $("run").disabled = false;
+  const brief = result.brief || {};
+  $("brief").textContent = brief.summary || "";
+  $("sources").replaceChildren(...(brief.sources || []).map((url) => {
+    const li = document.createElement("li");
+    if (/^https?:\/\//.test(url)) {  // only real web links become clickable, never "javascript:"
+      const a = document.createElement("a");
+      a.textContent = url;
+      a.href = url;
+      a.rel = "noopener noreferrer";  // the opened page can't control this one
+      a.target = "_blank";
+      li.append(a);
+    } else {
+      li.textContent = url;
+    }
+    return li;
+  }));
+
+  const match = result.match || {};
+  $("score").textContent = match.score ?? "";
+  $("matches").replaceChildren(...(match.matches || []).map((m) => {
+    const row = document.createElement("div");
+    row.className = "match";
+    const tag = document.createElement("span");
+    tag.className = `tag ${m.strength}`;
+    tag.textContent = m.strength;
+    const text = document.createElement("div");
+    text.textContent = m.requirement;
+    if (m.evidence) {
+      const evidence = document.createElement("div");
+      evidence.className = "evidence";
+      evidence.textContent = m.evidence;
+      text.append(evidence);
+    }
+    row.append(tag, text);
+    return row;
+  }));
+
+  const draft = result.draft || {};
+  fillList($("bullets"), draft.cv_bullets || []);
+  fillList($("questions"), draft.interview_questions || []);
+  ["results", "results-match", "results-draft"].forEach((id) => $(id).classList.remove("hidden"));
+}
+
+showCount($("cv"), $("cv-count"), CV_LIMIT);
+showCount($("job-ad"), $("job-count"), JOB_AD_LIMIT);
+</script>
+</body>
+</html>
