@@ -57,7 +57,9 @@ def test_resume_after_failure_skips_finished_steps(monkeypatch, job_ad, cv):
     def research_fails_once(state):
         calls["research"] += 1
         if calls["research"] == 1:
-            raise ConnectionError("simulated network failure")
+            # Not a ConnectionError: the retry policy (agent/retry.py) would quietly retry
+            # that and this test would never see a failure. A RuntimeError is never retried.
+            raise RuntimeError("simulated crash")
         return real_research(state)
 
     # Swap the real steps for these test versions (undone automatically after the test).
@@ -65,7 +67,7 @@ def test_resume_after_failure_skips_finished_steps(monkeypatch, job_ad, cv):
     monkeypatch.setattr(nodes, "research", research_fails_once)
     graph = build_graph(InMemorySaver(), InMemoryTracker())
 
-    with pytest.raises(ConnectionError):
+    with pytest.raises(RuntimeError):
         graph.invoke(start(job_ad, cv), config(), durability="sync")
     assert graph.get_state(config()).next == (
         "research",)  # stopped before research
