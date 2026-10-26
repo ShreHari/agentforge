@@ -23,6 +23,8 @@ Run it (once it's built):
 
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 
 def claim_run(conn, run_id: UUID, lease_seconds: int = 120) -> bool:
     """TODO(Day 4): try to take ownership of a run. Return True if this worker got it.
@@ -52,13 +54,32 @@ def claim_run(conn, run_id: UUID, lease_seconds: int = 120) -> bool:
 
 def renew_lease(conn, run_id: UUID, lease_seconds: int = 120) -> None:
     """TODO(Day 4): push lease_until forward. Call it after every graph step."""
-    raise NotImplementedError("TODO(Day 4): renew_lease")
+    conn.execute(
+        "UPDATE runs SET lease_until = now() + make_interval(secs => %s), updated_at = now() "
+        "WHERE id = %s AND status = 'running'",
+        (lease_seconds, run_id),
+    )
 
 
-def finish_run(conn, run_id: UUID, *, result: dict | None, error: str | None) -> None:
+def finish_run(conn, run_id: UUID, *, result: dict | None, error: str | None) -> bool:
     """TODO(Day 4): set status to 'succeeded' or 'failed', save result or error,
-    clear lease_until, update updated_at, and add a run_events row. One transaction."""
-    raise NotImplementedError("TODO(Day 4): finish_run")
+    clear lease_until, update updated_at, and add a run_events row. One transaction.
+
+    Only a 'running' run can be finished. Return True if this call finished it, False if
+    it wasn't running (e.g. a late duplicate worker), and then change nothing at all."""
+    status = "succeeded" if error is None else "failed"
+    with conn.transaction():  # both writes happen, or neither does
+        cursor = conn.execute(
+            "UPDATE runs SET status = %s, result = %s, error = %s, lease_until = NULL, "
+            "updated_at = now() WHERE id = %s AND status = 'running'",
+            # Jsonb stores the dict as JSON. Jsonb(None) would store a JSON null, so a
+            # failed run gets a real SQL NULL instead.
+            (status, Jsonb(result) if result is not None else None, error, run_id),
+        )
+        if cursor.rowcount != 1:  # not running: already finished, or never claimed
+            return False
+        conn.execute("INSERT INTO run_events (run_id, kind) VALUES (%s, %s)", (run_id, status))
+    return True
 
 
 def process_message(message) -> None:
