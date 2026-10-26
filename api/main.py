@@ -28,11 +28,13 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import FileResponse
+from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel
 
+from agent.privacy import redact_contact_details
 from agent.schemas import MAX_CV_CHARS, JobHuntInput
 from api.auth import user_id_from_token
 from api.parse import MAX_BYTES, ParseError, extract_text
@@ -189,7 +191,9 @@ def parse_cv(file: UploadFile) -> ParsedCV:
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="The file is too big. The limit is 2 MB.")
     try:
-        text = extract_text(data)
+        # Contact details are removed here too, so the text the user checks is exactly
+        # what will be saved and what the AI will read.
+        text = redact_contact_details(extract_text(data))
     except ParseError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return ParsedCV(text=text, characters=len(text), too_long=len(text) > MAX_CV_CHARS)
@@ -227,7 +231,9 @@ def create_run(
         )
         conn.execute(
             "INSERT INTO runs (id, user_id, input) VALUES (%s, %s, %s)",
-            (run_id, user_id, Jsonb(body.model_dump())),
+            # Contact details are removed BEFORE saving: never stored, never sent to the AI.
+            (run_id, user_id, Jsonb({"job_ad": redact_contact_details(body.job_ad),
+                                     "cv": redact_contact_details(body.cv)})),
         )
         conn.execute("INSERT INTO run_events (run_id, kind) VALUES (%s, 'queued')", (run_id,))
 
@@ -266,4 +272,20 @@ def get_run(
     return RunView.model_validate(row)  # check the database row against RunView
 
 
-# TODO(Day 3): GET /runs/{run_id}/events, streaming run_events as Server-Sent Events.
+@app.delete("/runs/{run_id}", status_code=204)
+def delete_run(
+    run_id: UUID,
+    pool: ConnectionPool = Depends(get_pool),
+    user_id: str = Depends(get_current_user),
+) -> Response:
+    """Delete a run and everything saved for it: the CV and job ad, the result, its progress
+    events, its tracker row and its LangGraph checkpoints. Owner only."""
+    with pool.connection() as conn, conn.transaction():
+        deleted = conn.execute(
+            "DELETE FROM runs WHERE id = %s AND user_id = %s RETURNING id", (run_id, user_id)
+        ).fetchone()  # run_events go too: ON DELETE CASCADE in db/schema.sql
+        if deleted is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        conn.execute("DELETE FROM tracker WHERE run_id = %s", (run_id,))
+        PostgresSaver(conn).delete_thread(str(run_id))  # the checkpoints hold the CV too
+    return Response(status_code=204)

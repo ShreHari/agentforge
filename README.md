@@ -27,10 +27,11 @@ are measured by evals, not trusted.
 | Retries on temporary AI and search errors (429, 5xx, timeouts) only | ✅ |
 | Graceful shutdown: on SIGTERM, stop between steps and hand the run back | ✅ Tested with a real worker process |
 | Google sign-in: every request carries a Google ID token, checked by the api | ✅ Fails closed if not configured |
-| Privacy basics (contact details kept from the AI, retention, deletion) | ⬜ Next |
+| Per-user limit: 10 runs an hour (429 above it), so no one can run up the AI bill | ✅ |
+| Privacy: emails, phone numbers and links removed before saving or the AI; "delete this run" removes everything incl. checkpoints; auto-delete after 30 days | ✅ |
 | Docker images, Kubernetes on GKE, load tests, real users | ⬜ Planned |
 
-114 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Users sign in with Google; the api stores only their Google account ID.
+127 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Users sign in with Google; the api stores only their Google account ID.
 
 ## Evidence: what the evals found
 

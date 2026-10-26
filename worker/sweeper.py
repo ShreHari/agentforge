@@ -14,6 +14,8 @@ A run can get stuck in two ways:
      Fix: put it back to 'queued' and re-publish it. The next worker resumes it from
      its last checkpoint.
 
+It also deletes runs older than RETENTION_DAYS (30): CVs are personal data.
+
 A run that has already killed MAX_ATTEMPTS workers is probably what's killing them (a
 "poison" run). Retrying it forever would keep crashing workers, so it's failed instead.
 
@@ -26,6 +28,7 @@ import time
 from uuid import UUID
 
 import psycopg
+from langgraph.checkpoint.postgres import PostgresSaver
 
 from core import queue
 from core.config import get_settings
@@ -38,6 +41,7 @@ logger = logging.getLogger("sweeper")
 QUEUED_TOO_LONG_SECONDS = 300
 MAX_ATTEMPTS = 3
 GAVE_UP_ERROR = "This run failed several times in a row, so we stopped retrying it."
+RETENTION_DAYS = 30  # CVs are personal data: keep them no longer than needed
 
 
 def fail_poison_runs(conn) -> list[UUID]:
@@ -83,6 +87,22 @@ def find_forgotten_queued_runs(conn) -> list[UUID]:
     return [run_id for (run_id,) in rows]
 
 
+def delete_old_runs(conn) -> int:
+    """Delete runs older than RETENTION_DAYS, with everything saved for them."""
+    with conn.transaction():
+        rows = conn.execute(
+            "DELETE FROM runs WHERE created_at < now() - make_interval(days => %s) RETURNING id",
+            (RETENTION_DAYS,),
+        ).fetchall()  # run_events go too (ON DELETE CASCADE)
+        run_ids = [run_id for (run_id,) in rows]
+        if run_ids:
+            conn.execute("DELETE FROM tracker WHERE run_id = ANY(%s)", (run_ids,))
+            saver = PostgresSaver(conn)
+            for run_id in run_ids:
+                saver.delete_thread(str(run_id))  # the checkpoints hold the CV too
+    return len(run_ids)
+
+
 def sweep(conn, publish) -> dict[str, int]:
     """One sweep. `publish` puts a run ID on the queue (a pretend one in tests)."""
     failed = fail_poison_runs(conn)  # first, so these are never re-queued below
@@ -98,8 +118,9 @@ def sweep(conn, publish) -> dict[str, int]:
             # It stays 'queued', so the next sweep tries again in a few minutes.
             logger.exception("run %s: couldn't publish; will retry next sweep", run_id)
 
+    deleted = delete_old_runs(conn)
     summary = {"failed": len(failed), "requeued": len(requeued),
-               "forgotten": len(forgotten), "published": published}
+               "forgotten": len(forgotten), "published": published, "deleted": deleted}
     if any(summary.values()):
         logger.info("sweep: %s", summary)
     return summary

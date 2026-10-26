@@ -88,7 +88,8 @@
     <textarea id="cv" placeholder="Your CV as text"></textarea>
     <div class="row"><span class="count" id="cv-count"></span></div>
     <p class="hint">Check this text: it is exactly what the AI will read. Fix anything that came
-      out jumbled.</p>
+      out jumbled. Email addresses, phone numbers and web links are removed before anything is
+      saved or sent to the AI.</p>
     <p class="message" id="cv-message"></p>
   </section>
 
@@ -120,12 +121,20 @@
     <ul id="bullets"></ul>
     <h2 style="margin-top:20px">Likely interview questions</h2>
     <ul id="questions"></ul>
+    <p style="margin-top:20px"><button class="link" id="delete-run">Delete this run and its
+      CV now</button></p>
   </section>
 
   </div>
 
-  <footer>Your CV and the job ad are processed by an AI model (Google Gemini) to produce these
-    results. Prototype: check every suggestion before you use it.</footer>
+  <footer>
+    <strong>Privacy.</strong> When you press Run, we save the CV and job ad text (with email
+    addresses, phone numbers and web links removed), your Google account ID, and the results.
+    They're processed by Google's Gemini AI to produce the results; the company's name is sent
+    to a web search service (Tavily) for the research step. Everything is deleted
+    automatically after 30 days, or straight away with "Delete this run". We never see your
+    Google password. This is a prototype: check every suggestion before you use it.
+  </footer>
 </main>
 
 <script>
@@ -198,6 +207,7 @@ $("run").addEventListener("click", async () => {
       $("run").disabled = false;
       return;
     }
+    currentRunId = body.run_id;
     watch(body.run_id);
   } catch {
     say($("run-message"), "Couldn't reach the server.", true);
@@ -284,6 +294,21 @@ function finish(result) {
   fillList($("questions"), draft.interview_questions || []);
   ["results", "results-match", "results-draft"].forEach((id) => $(id).classList.remove("hidden"));
 }
+
+// --- Delete a run ------------------------------------------------------------------------
+let currentRunId = null;
+$("delete-run").addEventListener("click", async () => {
+  if (!currentRunId) return;
+  const response = await api(`/runs/${currentRunId}`, { method: "DELETE" });
+  if (response.ok) {
+    currentRunId = null;
+    ["results", "results-match", "results-draft"].forEach((id) => $(id).classList.add("hidden"));
+    $("status").textContent = "";
+    say($("run-message"), "Deleted: the CV, job ad and results are gone from our database.");
+  } else {
+    say($("run-message"), "Couldn't delete the run. Please try again.", true);
+  }
+});
 
 // --- Sign-in ---------------------------------------------------------------------------
 // The Google ID token: proof of who you are, valid for 1 hour. Kept in memory only, so it's
