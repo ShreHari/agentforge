@@ -15,6 +15,18 @@ SAMPLES = Path(__file__).resolve().parents[1] / "samples"
 
 
 @pytest.fixture(autouse=True)
+def published(monkeypatch) -> list:
+    """Every test gets a pretend queue: the api "publishes" run IDs into this list.
+
+    Without it, running the tests while the emulator is up would put test runs on your
+    real queue, and a running worker with FAKE_LLM=false would spend real credits on them.
+    """
+    sent: list = []
+    monkeypatch.setattr("api.main.publish_run", sent.append)
+    return sent
+
+
+@pytest.fixture(autouse=True)
 def fake_mode(monkeypatch):
     """Every test runs in fake mode with no crash points, whatever your .env says."""
     monkeypatch.setenv("FAKE_LLM", "true")

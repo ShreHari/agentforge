@@ -20,21 +20,23 @@ Run it (Postgres running; FAKE_LLM=false in .env for real AI):
 
     uv run python -m worker.main
 
-For now the worker finds queued runs by asking Postgres every 2 seconds ("polling").
-Pub/Sub replaces that next: the api will publish each new run ID, and the worker will wait
-for messages instead of asking. process_run() stays exactly the same.
+Needs the queue too: `docker compose up -d` starts the Pub/Sub emulator, and
+`uv run python -m core.queue` creates the topic and subscription.
 """
 
+import json
 import logging
 import time
 from uuid import UUID
 
 import psycopg
+from google.api_core.exceptions import DeadlineExceeded, RetryError
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg.types.json import Jsonb
 
 from agent.graph import build_graph
 from agent.tracker import PostgresTracker
+from core import queue
 from core.config import get_settings
 
 logger = logging.getLogger("worker")
@@ -148,17 +150,54 @@ def process_run(conn, graph, run_id: UUID) -> str:
     return "succeeded"
 
 
-def next_queued_run(conn) -> UUID | None:
-    """The oldest run waiting to start, or None. Temporary: Pub/Sub replaces this."""
-    row = conn.execute(
-        "SELECT id FROM runs WHERE status = 'queued' ORDER BY created_at LIMIT 1"
-    ).fetchone()
-    return row[0] if row else None
+def run_id_from(data: bytes) -> UUID | None:
+    """The run ID inside a message, or None if the message isn't what we expect."""
+    try:
+        return UUID(json.loads(data)["run_id"])
+    except (ValueError, KeyError, TypeError):  # not JSON, no run_id, or not a valid ID
+        return None
 
 
-def process_message(message) -> None:
-    """TODO(Day 4): steps 1 and 6 around process_run(), for one Pub/Sub message."""
-    raise NotImplementedError("TODO(Day 4): process_message")
+def handle_one_message(conn, graph, subscriber, subscription: str) -> str | None:
+    """Steps 1 and 6 around process_run(): take ONE message, process it, then ack it.
+
+    Returns the outcome, or None if no message arrived in time.
+    """
+    # Step 1: wait up to 30 seconds for one message.
+    try:
+        response = subscriber.pull(
+            request={"subscription": subscription, "max_messages": 1}, timeout=30
+        )
+    except (DeadlineExceeded, RetryError):
+        return None  # nothing arrived: the caller simply asks again
+    if not response.received_messages:
+        return None
+    received = response.received_messages[0]
+
+    run_id = run_id_from(received.message.data)
+    try:
+        if run_id is None:
+            logger.error("dropping a message that isn't a run ID: %r", received.message.data[:200])
+            outcome = "bad message"  # retrying it can never help, so ack it below
+        else:
+            logger.info("run %s: starting", run_id)
+            outcome = process_run(conn, graph, run_id)
+    except Exception:
+        # The WORKER is in trouble (e.g. the database went away), not the run. Give the
+        # message back now ("nack") so another worker can try, instead of waiting for
+        # the 10-minute ack deadline to run out.
+        logger.exception("run %s: worker error, giving the message back", run_id)
+        subscriber.modify_ack_deadline(request={
+            "subscription": subscription, "ack_ids": [received.ack_id], "ack_deadline_seconds": 0,
+        })
+        return "returned"
+
+    # Step 6: ack ONLY now. The outcome is already saved in Postgres, so if this worker
+    # died a moment before this line, the message would come back and claim_run() would
+    # simply skip a run that's already finished.
+    subscriber.acknowledge(request={"subscription": subscription, "ack_ids": [received.ack_id]})
+    logger.info("run %s: %s", run_id, outcome)
+    return outcome
 
 
 def install_shutdown_handler(stop_event) -> None:
@@ -179,23 +218,17 @@ def main() -> None:
             PostgresSaver.from_conn_string(url) as checkpointer:
         checkpointer.setup()
         graph = build_graph(checkpointer, PostgresTracker(url))
-        logger.info("worker started: waiting for queued runs (Ctrl+C to stop)")
+        if get_settings().pubsub_emulator_host:
+            queue.setup()  # the emulator forgets everything on restart; on Google Cloud
+            # the topic and subscription are created once, ahead of time
+        subscriber, subscription = queue.subscriber(), queue.subscription_path()
+        logger.info("worker started: waiting for messages on %s (Ctrl+C to stop)", subscription)
 
+        # TODO(Day 5): stop this loop cleanly on SIGTERM (graceful shutdown).
         while True:
-            run_id = next_queued_run(conn)
-            if run_id is None:
-                time.sleep(2)  # nothing to do: wait, then ask again
-                continue
-            logger.info("run %s: starting", run_id)
-            try:
-                outcome = process_run(conn, graph, run_id)
-            except Exception:
-                # Something outside one run broke, e.g. the database went away. Log it,
-                # pause, and keep going; the run's lease runs out and it's picked up again.
-                logger.exception("run %s: worker error", run_id)
-                time.sleep(5)
-                continue
-            logger.info("run %s: %s", run_id, outcome)
+            outcome = handle_one_message(conn, graph, subscriber, subscription)
+            if outcome == "returned":
+                time.sleep(5)  # the worker is in trouble: pause before trying again
 
 
 if __name__ == "__main__":

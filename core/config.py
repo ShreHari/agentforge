@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # Empty = no pacing.
     llm_requests_per_minute: float | None = None
 
+    # The queue (Pub/Sub). On your laptop, PUBSUB_EMULATOR_HOST=localhost:8085 sends every
+    # Pub/Sub call to the emulator in docker-compose.yml. On Google Cloud it's left empty.
+    pubsub_emulator_host: str | None = None
+    gcp_project: str = "agentforge-local"
+    runs_topic: str = "runs"  # where the api puts new run IDs
+    runs_subscription: str = "runs-workers"  # where workers take them from
+
 
 @lru_cache
 def get_settings() -> Settings:

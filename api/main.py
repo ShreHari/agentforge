@@ -11,6 +11,7 @@ a worker picks the run up later (Day 4). That's why POST /runs returns 202 Accep
 ("I've got it, it isn't done yet") rather than 200 OK.
 """
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,10 @@ from pydantic import BaseModel
 from agent.schemas import MAX_CV_CHARS, JobHuntInput
 from api.parse import MAX_BYTES, ParseError, extract_text
 from core.config import get_settings
+from core.queue import publish_run
+from core.queue import setup as queue_setup
+
+logger = logging.getLogger("api")
 
 RunStatus = Literal["queued", "running", "succeeded", "failed"]
 WEB_PAGE = Path(__file__).resolve().parents[1] / "web" / "index.html"
@@ -48,6 +53,11 @@ async def lifespan(app: FastAPI):
         kwargs={"autocommit": True, "row_factory": dict_row},
     )
     app.state.pool.open(wait=False)
+    if get_settings().pubsub_emulator_host:
+        try:
+            queue_setup()  # the emulator forgets its topic on restart; recreate it
+        except Exception:
+            logger.warning("Pub/Sub emulator not reachable; new runs won't be published")
     yield
     app.state.pool.close()
 
@@ -177,8 +187,13 @@ def create_run(
         )
         conn.execute("INSERT INTO run_events (run_id, kind) VALUES (%s, 'queued')", (run_id,))
 
-    # TODO(Day 4): publish {"run_id": ...} to Pub/Sub HERE, after the commit above.
-    # If the publish fails, the run stays 'queued' and the sweeper re-publishes it.
+    # Tell the workers, AFTER the commit: a worker must never get a run ID that isn't
+    # saved yet. If the publish fails, the run is still safe in Postgres as 'queued', and
+    # the sweeper re-publishes it. So the user still gets their 202, never an error.
+    try:
+        publish_run(run_id)
+    except Exception:
+        logger.exception("run %s saved but not published; the sweeper will retry", run_id)
 
     return RunCreated(run_id=run_id, status="queued")
 

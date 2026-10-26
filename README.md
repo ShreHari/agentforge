@@ -20,13 +20,14 @@ are measured by evals, not trusted.
 | Postgres checkpoints, crash and resume | ✅ Tested with a real process kill |
 | Idempotent tracker write | ✅ Tested (`UNIQUE (run_id)`) |
 | CV upload: PDF or Word to text | ✅ File safety limits; nothing stored |
-| Web page: upload, check the text, run, see results | ✅ Runs stay "queued" until the worker loop exists |
-| Worker: claim with lease, renew, finish | ✅ Race-safe; tested with two workers at once |
-| Worker loop that runs the agent, Pub/Sub queue, sweeper | 🚧 In progress |
+| Web page: upload, check the text, run, see results | ✅ Works end to end with real AI |
+| Worker: claim with lease, renew, run or resume the graph, finish | ✅ Race-safe; tested with two workers at once and a worker dying mid-run |
+| Queue: Pub/Sub (emulator on a laptop), ack only after the result is saved | ✅ Duplicate messages are harmless |
+| Sweeper for stuck runs | 🚧 Next |
 | Sign-in, retries, graceful shutdown, privacy basics | ⬜ Planned |
 | Docker images, Kubernetes on GKE, load tests, real users | ⬜ Planned |
 
-62 automated tests. Sign-in is still a placeholder (`dev-user`).
+76 automated tests. Sign-in is still a placeholder (`dev-user`).
 
 ## Evidence: what the evals found
 
@@ -54,7 +55,7 @@ You need Docker Desktop (open), Python 3.12 and [uv](https://docs.astral.sh/uv/)
 ```bash
 cp .env.example .env             # then add your keys (see below)
 uv sync                          # install the packages listed in uv.lock
-docker compose up -d             # start Postgres (on port 5433)
+docker compose up -d             # start Postgres (port 5433) and the Pub/Sub emulator (8085)
 uv run python -m core.db         # create the tables
 uv run pytest                    # all tests should pass
 ```
@@ -72,13 +73,21 @@ uv run python -m evals.run            # match and draft evals
 uv run python -m evals.research       # research evals
 ```
 
-### The web page
+### The whole app
+
+Two terminals, two separate programs (stop the worker before running the tests):
 
 ```bash
-uv run uvicorn api.main:app --reload
+uv run uvicorn api.main:app --reload     # terminal 1: the api and the web page
+uv run python -m worker.main             # terminal 2: the worker
 ```
 
 Open http://127.0.0.1:8000. The api docs are at http://127.0.0.1:8000/docs.
+
+A run's journey: the page posts to `/runs`; the api saves the run as `queued` and
+publishes its ID to Pub/Sub; the worker pulls the message, claims the run with a lease,
+runs the graph (a checkpoint after every step), saves the result, and only then acks the
+message; the page polls `/runs/{id}` until it says `succeeded`.
 
 ## Try crash recovery
 
@@ -150,4 +159,5 @@ This is at-least-once execution with idempotent side effects, not "exactly once"
 | `relation "tracker" does not exist` | Run `uv run python -m core.db` |
 | `429 RESOURCE_EXHAUSTED` from Gemini | Too many requests a minute: set `LLM_REQUESTS_PER_MINUTE` in `.env` |
 | api logs `error connecting in 'pool-1'` | Postgres is down; the api keeps retrying, `/readyz` returns 503 |
-| Tests show `s` (skipped) | Normal when Postgres isn't running; start it to run them all |
+| Tests show `s` (skipped) | Normal when Postgres or the Pub/Sub emulator isn't running |
+| Runs stay `queued` | The worker isn't running, or the emulator restarted and lost its messages (re-run the run) |

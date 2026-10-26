@@ -3,8 +3,10 @@
 These tests are the specification for worker/main.py: write the code until they pass.
 """
 
+import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 
 import psycopg
 import pytest
@@ -14,7 +16,14 @@ from psycopg.types.json import Jsonb
 from agent import nodes
 from agent.graph import build_graph
 from agent.tracker import InMemoryTracker
-from worker.main import FRIENDLY_ERROR, claim_run, finish_run, process_run, renew_lease
+from worker.main import (
+    FRIENDLY_ERROR,
+    claim_run,
+    finish_run,
+    handle_one_message,
+    process_run,
+    renew_lease,
+)
 
 
 @pytest.fixture
@@ -226,3 +235,75 @@ def test_a_run_with_broken_saved_input_fails_on_its_own(conn, graph):
     run_id = new_run(conn, run_input={})  # nothing in it
     assert process_run(conn, graph, run_id) == "failed"
     assert status_and_attempt(conn, run_id) == ("failed", 1)
+
+
+# --- handle_one_message: Pub/Sub around process_run. A pretend subscriber records what
+# the worker does with each message, so no emulator is needed.
+
+
+class PretendSubscriber:
+    def __init__(self, data: bytes | None):
+        self.data = data
+        self.acked: list[str] = []
+        self.given_back: list[str] = []
+
+    def pull(self, request, timeout):
+        if self.data is None:
+            return SimpleNamespace(received_messages=[])
+        message = SimpleNamespace(ack_id="ack-1", message=SimpleNamespace(data=self.data))
+        return SimpleNamespace(received_messages=[message])
+
+    def acknowledge(self, request):
+        self.acked += request["ack_ids"]
+
+    def modify_ack_deadline(self, request):
+        assert request["ack_deadline_seconds"] == 0  # 0 = "give it back now"
+        self.given_back += request["ack_ids"]
+
+
+def message_for(run_id) -> bytes:
+    return json.dumps({"run_id": str(run_id)}).encode()
+
+
+def test_a_message_is_acked_only_after_the_run_is_finished(conn, graph, run_input):
+    run_id = new_run(conn, run_input=run_input)
+    subscriber = PretendSubscriber(message_for(run_id))
+
+    assert handle_one_message(conn, graph, subscriber, "sub") == "succeeded"
+    assert subscriber.acked == ["ack-1"]
+    assert status_and_attempt(conn, run_id) == ("succeeded", 1)
+
+
+def test_a_duplicate_message_is_acked_and_does_nothing(conn, graph, run_input):
+    """Pub/Sub delivers at least once. The second copy finds the run finished: skip, ack."""
+    run_id = new_run(conn, run_input=run_input)
+    handle_one_message(conn, graph, PretendSubscriber(message_for(run_id)), "sub")
+
+    duplicate = PretendSubscriber(message_for(run_id))
+    assert handle_one_message(conn, graph, duplicate, "sub") == "skipped"
+    assert duplicate.acked == ["ack-1"]
+    assert status_and_attempt(conn, run_id) == ("succeeded", 1)  # still run only once
+
+
+def test_a_message_that_isnt_a_run_id_is_dropped(conn, graph):
+    subscriber = PretendSubscriber(b"hello")
+    assert handle_one_message(conn, graph, subscriber, "sub") == "bad message"
+    assert subscriber.acked == ["ack-1"]  # retrying it could never help
+
+
+def test_when_the_worker_is_in_trouble_the_message_is_given_back(conn, graph, run_input,
+                                                                 monkeypatch):
+    def database_gone(conn, graph, run_id):
+        raise ConnectionError("database went away")
+
+    monkeypatch.setattr("worker.main.process_run", database_gone)
+    run_id = new_run(conn, run_input=run_input)
+    subscriber = PretendSubscriber(message_for(run_id))
+
+    assert handle_one_message(conn, graph, subscriber, "sub") == "returned"
+    assert subscriber.acked == []  # NOT acked: it must be retried
+    assert subscriber.given_back == ["ack-1"]
+
+
+def test_no_message_means_nothing_to_do(conn, graph):
+    assert handle_one_message(conn, graph, PretendSubscriber(None), "sub") is None

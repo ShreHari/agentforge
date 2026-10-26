@@ -19,7 +19,15 @@ services:
       timeout: 3s
       retries: 10
 
-  # TODO(Day 4): the Pub/Sub emulator, so the queue runs on your laptop too.
+  pubsub:
+    # Google's Pub/Sub emulator: a fake Pub/Sub on your laptop, so the queue works offline
+    # and costs nothing. Our code is the same as on Google Cloud; only
+    # PUBSUB_EMULATOR_HOST=localhost:8085 in .env points the client here.
+    # It keeps messages in memory: restarting it empties the queue (see the README).
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: gcloud beta emulators pubsub start --project=agentforge-local --host-port=0.0.0.0:8085
+    ports:
+      - "8085:8085"
 
 volumes:
   pgdata:
