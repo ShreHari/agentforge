@@ -1,0 +1,24 @@
+# What `COPY . .` must NOT put in the image.
+
+# Secrets: never in an image. Anyone who can pull the image could read them.
+.env
+*.key
+*-credentials.json
+
+# Rebuilt inside the image, or not needed to run the app
+.venv/
+.git/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tests/
+evals/
+practice/
+samples/
+docs/
+*.log
+
+# Editors and macOS
+.vscode/
+.idea/
+.DS_Store

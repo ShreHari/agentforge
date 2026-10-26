@@ -1,3 +1,27 @@
+# Settings shared by api, worker and sweeper. YAML only lets you use an anchor (&app)
+# after it's defined, so this sits at the top; "<<: *app" below pastes it in.
+x-app: &app
+  build: .
+  image: agentforge:dev
+  # Only started with --profile app, so `docker compose up -d` still starts just the
+  # database and the queue, for when you run the api with `uv run uvicorn` (--reload).
+  profiles: ["app"]
+  # A tiny helper runs as process 1 and passes Ctrl+C / `docker compose stop` signals on.
+  # Process 1 ignores SIGTERM unless the program asked for it, so without this the
+  # sweeper (which doesn't) would wait 10 seconds and then be killed.
+  init: true
+  env_file: .env  # your API keys and GOOGLE_CLIENT_ID, read when the container starts
+  environment:
+    # Inside Docker, "localhost" is the container itself. The other containers are
+    # reached by their service names, on their inside ports.
+    DATABASE_URL: postgresql://agentforge:agentforge@postgres:5432/agentforge
+    PUBSUB_EMULATOR_HOST: pubsub:8085
+  depends_on:
+    postgres:
+      condition: service_healthy
+    pubsub:
+      condition: service_started
+
 services:
   postgres:
     image: postgres:16
@@ -28,6 +52,23 @@ services:
     command: gcloud beta emulators pubsub start --project=agentforge-local --host-port=0.0.0.0:8085
     ports:
       - "8085:8085"
+
+  # ---- AgentForge itself: one image, three jobs ----
+  api:
+    <<: *app
+    ports:
+      - "8000:8000"
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "worker.main"]
+    # On "stop", Docker sends SIGTERM, waits this long, then kills. The worker hands its
+    # run back between steps, and a step can take a while.
+    stop_grace_period: 90s
+
+  sweeper:
+    <<: *app
+    command: ["python", "-m", "worker.sweeper", "--loop"]
 
 volumes:
   pgdata:
