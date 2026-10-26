@@ -4,6 +4,9 @@ These tests are the specification for worker/main.py: write the code until they 
 """
 
 import json
+import os
+import signal
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
@@ -21,6 +24,7 @@ from worker.main import (
     claim_run,
     finish_run,
     handle_one_message,
+    install_shutdown_handler,
     process_run,
     renew_lease,
 )
@@ -49,6 +53,11 @@ def new_run(conn, status: str = "queued", attempt: int = 0,
             (lease_seconds, run_id),
         )
     return run_id
+
+
+def state_of(conn, run_id: uuid.UUID) -> tuple:
+    return conn.execute(
+        "SELECT status, attempt, lease_until FROM runs WHERE id = %s", (run_id,)).fetchone()
 
 
 def status_and_attempt(conn, run_id: uuid.UUID) -> tuple:
@@ -307,3 +316,58 @@ def test_when_the_worker_is_in_trouble_the_message_is_given_back(conn, graph, ru
 
 def test_no_message_means_nothing_to_do(conn, graph):
     assert handle_one_message(conn, graph, PretendSubscriber(None), "sub") is None
+
+
+# --- Graceful shutdown: stop between steps, hand the run back, give the message back.
+
+
+def test_a_worker_told_to_stop_hands_the_run_back_after_the_current_step(
+        conn, run_input, monkeypatch):
+    stop = threading.Event()
+    real_research = nodes.research
+
+    def research_then_shutdown_arrives(state):
+        result = real_research(state)
+        stop.set()  # SIGTERM arrives while research is running
+        return result
+
+    monkeypatch.setattr(nodes, "research", research_then_shutdown_arrives)
+    checkpointer, tracker = InMemorySaver(), InMemoryTracker()
+    graph = build_graph(checkpointer, tracker)
+    run_id = new_run(conn, run_input=run_input)
+
+    assert process_run(conn, graph, run_id, stop) == "handed back"
+    # Back in the queue, the lease cleared, and the attempt NOT counted against the run.
+    assert state_of(conn, run_id) == ("queued", 0, None)
+    assert events(conn, run_id) == ["step_done", "step_done", "handed_back"]
+
+    # The next worker carries on from match: validate and research are not run again.
+    monkeypatch.undo()
+    calls = []
+    monkeypatch.setattr(nodes, "validate", lambda state: calls.append("validate"))
+    monkeypatch.setattr(nodes, "research", lambda state: calls.append("research"))
+    next_worker_graph = build_graph(checkpointer, tracker)
+    assert process_run(conn, next_worker_graph, run_id) == "succeeded"
+    assert calls == []
+
+
+def test_a_handed_back_message_is_given_back_not_acked(conn, graph, run_input, monkeypatch):
+    monkeypatch.setattr("worker.main.process_run", lambda conn, graph, run_id, stop: "handed back")
+    run_id = new_run(conn, run_input=run_input)
+    subscriber = PretendSubscriber(message_for(run_id))
+
+    assert handle_one_message(conn, graph, subscriber, "sub") == "handed back"
+    assert subscriber.acked == []
+    assert subscriber.given_back == ["ack-1"]  # another worker gets it straight away
+
+
+def test_sigterm_sets_the_stop_flag_instead_of_killing_the_process():
+    stop = threading.Event()
+    before = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
+    try:
+        install_shutdown_handler(stop)
+        os.kill(os.getpid(), signal.SIGTERM)  # what Kubernetes sends
+        assert stop.wait(timeout=2)
+    finally:
+        signal.signal(signal.SIGTERM, before[0])
+        signal.signal(signal.SIGINT, before[1])

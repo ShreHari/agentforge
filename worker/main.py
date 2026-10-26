@@ -26,7 +26,8 @@ Needs the queue too: `docker compose up -d` starts the Pub/Sub emulator, and
 
 import json
 import logging
-import time
+import signal
+import threading
 from uuid import UUID
 
 import psycopg
@@ -102,8 +103,27 @@ def finish_run(conn, run_id: UUID, *, result: dict | None, error: str | None) ->
     return True
 
 
-def process_run(conn, graph, run_id: UUID) -> str:
-    """Steps 2 to 5 for one run. Returns what happened: "skipped", "succeeded" or "failed".
+def hand_back_run(conn, run_id: UUID) -> None:
+    """Shutting down mid-run: put the run back in the queue for another worker.
+
+    attempt goes back down by 1, because a deploy isn't the run's fault: three deploys
+    during one run must not make the sweeper fail it as a "poison" run.
+    """
+    with conn.transaction():
+        cursor = conn.execute(
+            "UPDATE runs SET status = 'queued', attempt = attempt - 1, lease_until = NULL, "
+            "updated_at = now() WHERE id = %s AND status = 'running'",
+            (run_id,),
+        )
+        if cursor.rowcount == 1:
+            conn.execute(
+                "INSERT INTO run_events (run_id, kind) VALUES (%s, 'handed_back')", (run_id,)
+            )
+
+
+def process_run(conn, graph, run_id: UUID, stop: threading.Event | None = None) -> str:
+    """Steps 2 to 5 for one run. Returns what happened: "skipped", "succeeded", "failed",
+    or "handed back" if `stop` was set (the worker is shutting down) part-way through.
 
     `graph` is built once by main() and reused for every run.
     """
@@ -135,9 +155,15 @@ def process_run(conn, graph, run_id: UUID) -> str:
                     (run_id, Jsonb({"step": step})),
                 )
             renew_lease(conn, run_id)
+
+            # Shutting down? The step that just finished is checkpointed, so stop HERE,
+            # between steps, and let another worker carry on from this point.
+            if stop is not None and stop.is_set():
+                hand_back_run(conn, run_id)
+                return "handed back"
     except Exception:
-        # TODO(Day 5): retry errors that may pass (a 429 or a timeout from the model)
-        # instead of failing the run straight away.
+        # Temporary errors were already retried by the step's retry policy
+        # (agent/retry.py), so this one is real: fail the run.
         logger.exception("run %s failed", run_id)  # the full error, for us
         finish_run(conn, run_id, result=None, error=FRIENDLY_ERROR)  # a safe one, for them
         return "failed"
@@ -158,15 +184,17 @@ def run_id_from(data: bytes) -> UUID | None:
         return None
 
 
-def handle_one_message(conn, graph, subscriber, subscription: str) -> str | None:
+def handle_one_message(conn, graph, subscriber, subscription: str,
+                       stop: threading.Event | None = None) -> str | None:
     """Steps 1 and 6 around process_run(): take ONE message, process it, then ack it.
 
     Returns the outcome, or None if no message arrived in time.
     """
-    # Step 1: wait up to 30 seconds for one message.
+    # Step 1: wait up to 10 seconds for one message. Short, so a worker that's been told
+    # to stop notices within 10 seconds even when the queue is empty.
     try:
         response = subscriber.pull(
-            request={"subscription": subscription, "max_messages": 1}, timeout=30
+            request={"subscription": subscription, "max_messages": 1}, timeout=10
         )
     except (DeadlineExceeded, RetryError):
         return None  # nothing arrived: the caller simply asks again
@@ -181,7 +209,7 @@ def handle_one_message(conn, graph, subscriber, subscription: str) -> str | None
             outcome = "bad message"  # retrying it can never help, so ack it below
         else:
             logger.info("run %s: starting", run_id)
-            outcome = process_run(conn, graph, run_id)
+            outcome = process_run(conn, graph, run_id, stop)
     except Exception:
         # The WORKER is in trouble (e.g. the database went away), not the run. Give the
         # message back now ("nack") so another worker can try, instead of waiting for
@@ -192,6 +220,14 @@ def handle_one_message(conn, graph, subscriber, subscription: str) -> str | None
         })
         return "returned"
 
+    if outcome == "handed back":
+        # Shutting down mid-run: give the message back so another worker takes it now.
+        subscriber.modify_ack_deadline(request={
+            "subscription": subscription, "ack_ids": [received.ack_id], "ack_deadline_seconds": 0,
+        })
+        logger.info("run %s: handed back (shutting down)", run_id)
+        return outcome
+
     # Step 6: ack ONLY now. The outcome is already saved in Postgres, so if this worker
     # died a moment before this line, the message would come back and claim_run() would
     # simply skip a run that's already finished.
@@ -200,12 +236,22 @@ def handle_one_message(conn, graph, subscriber, subscription: str) -> str | None
     return outcome
 
 
-def install_shutdown_handler(stop_event) -> None:
-    """TODO(Day 5): on SIGTERM, set stop_event so the main loop stops pulling.
+def install_shutdown_handler(stop: threading.Event) -> None:
+    """On SIGTERM (Kubernetes stopping the pod) or Ctrl+C, ask the worker to stop politely.
 
-    Hint: the signal module, signal.signal(signal.SIGTERM, handler).
+    The handler only SETS A FLAG. The loop and process_run() check it at safe points
+    (between messages, between steps), so nothing is ever cut off half-way through.
+    A second signal means "stop NOW": the default behaviour, an immediate exit.
     """
-    raise NotImplementedError("TODO(Day 5): install_shutdown_handler")
+    def handler(signum, frame):
+        if stop.is_set():
+            raise SystemExit(1)  # asked twice: give up waiting
+        logger.info("%s received: finishing the current step, then stopping",
+                    signal.Signals(signum).name)
+        stop.set()
+
+    signal.signal(signal.SIGTERM, handler)
+    signal.signal(signal.SIGINT, handler)  # Ctrl+C on your laptop behaves the same way
 
 
 def main() -> None:
@@ -224,11 +270,15 @@ def main() -> None:
         subscriber, subscription = queue.subscriber(), queue.subscription_path()
         logger.info("worker started: waiting for messages on %s (Ctrl+C to stop)", subscription)
 
-        # TODO(Day 5): stop this loop cleanly on SIGTERM (graceful shutdown).
-        while True:
-            outcome = handle_one_message(conn, graph, subscriber, subscription)
+        stop = threading.Event()
+        install_shutdown_handler(stop)
+        while not stop.is_set():
+            outcome = handle_one_message(conn, graph, subscriber, subscription, stop)
             if outcome == "returned":
-                time.sleep(5)  # the worker is in trouble: pause before trying again
+                stop.wait(5)  # the worker is in trouble: pause (but wake up if told to stop)
+
+    # Leaving the `with` blocks above closed the database connections.
+    logger.info("worker stopped cleanly")
 
 
 if __name__ == "__main__":
