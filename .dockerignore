@@ -22,3 +22,7 @@ docs/
 .vscode/
 .idea/
 .DS_Store
+
+# Deployment files: not needed inside the image
+k8s/
+deploy/

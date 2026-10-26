@@ -1,0 +1,5 @@
+# A namespace: AgentForge's own corner of the cluster, so its names never clash with others.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentforge

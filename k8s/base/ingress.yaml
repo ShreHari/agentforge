@@ -1,0 +1,25 @@
+# The front door: a Google Cloud load balancer on a fixed public IP (agentforge-ip), with a
+# free Google-managed HTTPS certificate (agentforge-cert, made by deploy.sh for your domain).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentforge
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: agentforge-ip
+    networking.gke.io/managed-certificates: agentforge-cert
+    networking.gke.io/v1beta1.FrontendConfig: agentforge
+spec:
+  defaultBackend:
+    service:
+      name: api
+      port: {number: 80}
+---
+# Anyone typing http:// is sent to https://. Sign-in tokens must never travel unencrypted.
+apiVersion: networking.gke.io/v1beta1
+kind: FrontendConfig
+metadata:
+  name: agentforge
+spec:
+  redirectToHttps:
+    enabled: true

@@ -1,0 +1,139 @@
+# The api: serves the web page and the REST endpoints. Stateless, so any pod can answer any
+# request, and Kubernetes can add or remove pods freely.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: {app: api}
+spec:
+  replicas: 2                       # two, so one can restart while the other serves
+  selector:
+    matchLabels: {app: api}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}   # never fewer than 2 ready pods
+  template:
+    metadata:
+      labels: {app: api}
+    spec:
+      serviceAccountName: agentforge
+      # preStop (10 s) + uvicorn finishing in-flight requests (20 s) fits inside this.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        # Cloud SQL Auth Proxy as a "native sidecar" (an init container that keeps
+        # running). Kubernetes starts it BEFORE the app and stops it AFTER the app, so the
+        # app has its database for its whole life, including while shutting down.
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+          restartPolicy: Always
+          args:
+            - --structured-logs
+            - --port=5432                    # the app connects to 127.0.0.1:5432
+            - --health-check
+            - --http-address=0.0.0.0
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)    # e.g. agentforge-shre-2026:europe-west2:agentforge-db
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom:
+                configMapKeyRef: {name: agentforge-config, key: INSTANCE_CONNECTION_NAME}
+          startupProbe:                      # the app starts only once this says "ready"
+            httpGet: {path: /startup, port: 9090}
+            periodSeconds: 1
+            failureThreshold: 30
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+      containers:
+        - name: api
+          image: agentforge
+          args:
+            - uvicorn
+            - api.main:app
+            - --host=0.0.0.0
+            - --port=8000
+            # Trust the load balancer's X-Forwarded-Proto, so the app knows the user is on
+            # https (it picks the stricter Referrer-Policy then).
+            - --proxy-headers
+            - --forwarded-allow-ips=*
+            - --timeout-graceful-shutdown=20
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: {name: agentforge-config}
+            - secretRef: {name: agentforge-secrets}
+          readinessProbe:                    # "send me traffic?" needs the database
+            httpGet: {path: /readyz, port: 8000}
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:                     # "am I alive?" checks nothing else, on purpose
+            httpGet: {path: /healthz, port: 8000}
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            # On shutdown, keep serving for 10 s while the load balancer stops sending new
+            # requests here; only then does uvicorn get SIGTERM. No dropped requests.
+            preStop:
+              sleep: {seconds: 10}
+          resources:
+            requests: {cpu: 250m, memory: 768Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+---
+# A stable name and address for the api pods. The load balancer sends traffic straight to
+# the pods (NEG: "container-native load balancing"), health-checked with /readyz.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+    cloud.google.com/backend-config: '{"default": "api"}'
+spec:
+  selector: {app: api}
+  ports:
+    - port: 80
+      targetPort: 8000
+---
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: api
+spec:
+  healthCheck:
+    type: HTTP
+    requestPath: /readyz
+    port: 8000
+  connectionDraining:
+    drainingTimeoutSec: 30           # let in-flight requests finish when a pod leaves
+---
+# More api pods when they get busy. Max 3 because the smallest Cloud SQL allows 25
+# connections and each api pod keeps up to 5 (at real scale: PgBouncer or a bigger tier).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: api}
+  minReplicas: 2
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}
+---
+# During cluster maintenance, Google may move pods; this keeps at least one api pod up.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: api}

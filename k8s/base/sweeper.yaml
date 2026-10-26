@@ -1,0 +1,59 @@
+# The sweeper, once a minute: re-queues runs whose worker died, re-publishes lost messages,
+# fails poison runs and deletes runs older than 30 days. See worker/sweeper.py.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sweeper
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid          # never two sweeps at once
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0                # if one sweep fails, the next minute's sweep tries again
+      activeDeadlineSeconds: 240
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          serviceAccountName: agentforge
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: cloud-sql-proxy
+              image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+              restartPolicy: Always
+              args:
+                - --structured-logs
+                - --port=5432                    # the app connects to 127.0.0.1:5432
+                - --health-check
+                - --http-address=0.0.0.0
+                - --exit-zero-on-sigterm
+                - $(INSTANCE_CONNECTION_NAME)    # e.g. agentforge-shre-2026:europe-west2:agentforge-db
+              env:
+                - name: INSTANCE_CONNECTION_NAME
+                  valueFrom:
+                    configMapKeyRef: {name: agentforge-config, key: INSTANCE_CONNECTION_NAME}
+              startupProbe:                      # the app starts only once this says "ready"
+                httpGet: {path: /startup, port: 9090}
+                periodSeconds: 1
+                failureThreshold: 30
+              resources:
+                requests: {cpu: 100m, memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+          containers:
+            - name: sweeper
+              image: agentforge
+              args: [python, -m, worker.sweeper]
+              envFrom:
+                - configMapRef: {name: agentforge-config}
+                - secretRef: {name: agentforge-secrets}
+              resources:
+                requests: {cpu: 250m, memory: 512Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}

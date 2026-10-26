@@ -1,0 +1,13 @@
+# The base: everything AgentForge runs on GKE. deploy/deploy.sh builds an overlay on top
+# (k8s/live/, made fresh on every deploy and never committed) that adds the image tag, the settings, the secrets and the HTTPS certificate.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agentforge
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - api.yaml
+  - worker.yaml
+  - sweeper.yaml
+  - migrate.yaml
+  - ingress.yaml

@@ -15,3 +15,6 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Made by deploy/deploy.sh on every deploy (holds secrets briefly): never commit
+k8s/live/

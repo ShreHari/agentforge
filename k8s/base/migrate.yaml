@@ -1,0 +1,53 @@
+# Creates or updates the database tables (db/schema.sql) and LangGraph's checkpoint tables.
+# Safe to run on every deploy: it only adds what's missing. deploy.sh deletes the old Job
+# first, because a Job can't be changed once created.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: agentforge
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+          restartPolicy: Always
+          args:
+            - --structured-logs
+            - --port=5432                    # the app connects to 127.0.0.1:5432
+            - --health-check
+            - --http-address=0.0.0.0
+            - --exit-zero-on-sigterm
+            - $(INSTANCE_CONNECTION_NAME)    # e.g. agentforge-shre-2026:europe-west2:agentforge-db
+          env:
+            - name: INSTANCE_CONNECTION_NAME
+              valueFrom:
+                configMapKeyRef: {name: agentforge-config, key: INSTANCE_CONNECTION_NAME}
+          startupProbe:                      # the app starts only once this says "ready"
+            httpGet: {path: /startup, port: 9090}
+            periodSeconds: 1
+            failureThreshold: 30
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+      containers:
+        - name: migrate
+          image: agentforge
+          args: [python, -m, core.db]
+          envFrom:
+            - configMapRef: {name: agentforge-config}
+            - secretRef: {name: agentforge-secrets}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
