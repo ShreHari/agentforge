@@ -121,6 +121,7 @@ class RunView(BaseModel):
     attempt: int
     error: str | None
     result: dict | None
+    steps_done: list[str]  # e.g. ["validate", "research"]: lets the page show live progress
     created_at: datetime
     updated_at: datetime
 
@@ -265,11 +266,21 @@ def get_run(
             (run_id, user_id),
         ).fetchone()
 
-    # Someone else's run gets the same 404 as a run that doesn't exist, so the api never
-    # reveals which run IDs are real. "AND user_id = %s" is the tenant isolation.
-    if row is None:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return RunView.model_validate(row)  # check the database row against RunView
+        # Someone else's run gets the same 404 as a run that doesn't exist, so the api never
+        # reveals which run IDs are real. "AND user_id = %s" is the tenant isolation.
+        if row is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        # The worker writes a 'step_done' event after each step (worker/main.py).
+        events = conn.execute(
+            "SELECT data->>'step' AS step FROM run_events "
+            "WHERE run_id = %s AND kind = 'step_done' ORDER BY id",
+            (run_id,),
+        ).fetchall()
+
+    # A resumed run can finish a step twice; dict.fromkeys drops repeats and keeps the order.
+    steps_done = list(dict.fromkeys(event["step"] for event in events))
+    return RunView.model_validate({**row, "steps_done": steps_done})
 
 
 @app.delete("/runs/{run_id}", status_code=204)

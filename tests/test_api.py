@@ -37,6 +37,23 @@ def test_create_then_get_run(database_url, client, job_ad, cv):
     assert fetched.json()["status"] == "queued"
 
 
+def test_run_shows_the_steps_done_so_far(database_url, client, job_ad, cv):
+    """The page shows live progress from the worker's 'step_done' events, without repeats."""
+    import psycopg
+    from psycopg.types.json import Jsonb
+
+    run_id = client.post("/runs", json={"job_ad": job_ad, "cv": cv}).json()["run_id"]
+    assert client.get(f"/runs/{run_id}").json()["steps_done"] == []
+
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        for step in ["validate", "research", "research"]:  # research twice: a resumed run
+            conn.execute(
+                "INSERT INTO run_events (run_id, kind, data) VALUES (%s, 'step_done', %s)",
+                (run_id, Jsonb({"step": step})),
+            )
+    assert client.get(f"/runs/{run_id}").json()["steps_done"] == ["validate", "research"]
+
+
 def test_bad_input_is_rejected(database_url, client, job_ad):
     response = client.post("/runs", json={"job_ad": job_ad, "cv": "short"})
     assert response.status_code == 422
