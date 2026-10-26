@@ -13,8 +13,15 @@ NAMESPACE=agentforge
 REPO="$REGION-docker.pkg.dev/$PROJECT/agentforge/agentforge"
 
 cd "$(dirname "$0")/.."
+# The value of KEY: from .env (allowing "export KEY=", spaces and quotes), else from your
+# terminal's environment. The Gemini key may be called GOOGLE_API_KEY or GEMINI_API_KEY.
 env_value() {
-  grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'
+  local v
+  v=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=" .env 2>/dev/null | tail -n1 \
+      | sed -E "s/^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=[[:space:]]*//; s/[[:space:]]+$//; s/^[\"']//; s/[\"']$//")
+  [ -n "$v" ] || v=$(printenv "$1" || true)
+  if [ -z "$v" ] && [ "$1" = GOOGLE_API_KEY ]; then v=$(env_value GEMINI_API_KEY); fi
+  printf '%s' "$v"
 }
 
 # The image is tagged with the commit, so the tag must describe exactly what's deployed.

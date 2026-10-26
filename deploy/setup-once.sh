@@ -16,11 +16,18 @@ NAMESPACE=agentforge
 KSA=agentforge
 
 cd "$(dirname "$0")/.."   # the repo root, where .env is
-env_value() {             # the value of KEY in .env, without surrounding quotes
-  grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'
+# The value of KEY: from .env (allowing "export KEY=", spaces and quotes), else from your
+# terminal's environment. The Gemini key may be called GOOGLE_API_KEY or GEMINI_API_KEY.
+env_value() {
+  local v
+  v=$(grep -E "^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=" .env 2>/dev/null | tail -n1 \
+      | sed -E "s/^[[:space:]]*(export[[:space:]]+)?$1[[:space:]]*=[[:space:]]*//; s/[[:space:]]+$//; s/^[\"']//; s/[\"']$//")
+  [ -n "$v" ] || v=$(printenv "$1" || true)
+  if [ -z "$v" ] && [ "$1" = GOOGLE_API_KEY ]; then v=$(env_value GEMINI_API_KEY); fi
+  printf '%s' "$v"
 }
 for key in GOOGLE_API_KEY TAVILY_API_KEY GOOGLE_CLIENT_ID LLM_MODEL; do
-  [ -n "$(env_value "$key")" ] || { echo "$key is missing in .env"; exit 1; }
+  [ -n "$(env_value "$key")" ] || { echo "$key is missing in .env (names found: $(grep -oE '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_]+' .env | sed -E 's/^[[:space:]]*(export[[:space:]]+)?//' | tr '\n' ' '))"; exit 1; }
 done
 
 echo "1/6 Waiting for the database and the cluster to be ready (checks every 20 s)..."
