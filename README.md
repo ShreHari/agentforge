@@ -23,11 +23,11 @@ are measured by evals, not trusted.
 | Web page: upload, check the text, run, see results | ✅ Works end to end with real AI |
 | Worker: claim with lease, renew, run or resume the graph, finish | ✅ Race-safe; tested with two workers at once and a worker dying mid-run |
 | Queue: Pub/Sub (emulator on a laptop), ack only after the result is saved | ✅ Duplicate messages are harmless |
-| Sweeper for stuck runs | 🚧 Next |
+| Sweeper: re-queues runs whose worker died or whose message was lost; fails "poison" runs after 3 tries | ✅ |
 | Sign-in, retries, graceful shutdown, privacy basics | ⬜ Planned |
 | Docker images, Kubernetes on GKE, load tests, real users | ⬜ Planned |
 
-76 automated tests. Sign-in is still a placeholder (`dev-user`).
+84 automated tests, run against their own database (`agentforge_test`) so they never touch the app's runs. Sign-in is still a placeholder (`dev-user`).
 
 ## Evidence: what the evals found
 
@@ -80,6 +80,7 @@ Two terminals, two separate programs (stop the worker before running the tests):
 ```bash
 uv run uvicorn api.main:app --reload     # terminal 1: the api and the web page
 uv run python -m worker.main             # terminal 2: the worker
+uv run python -m worker.sweeper --loop   # terminal 3 (optional): re-queue stuck runs
 ```
 
 Open http://127.0.0.1:8000. The api docs are at http://127.0.0.1:8000/docs.

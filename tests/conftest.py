@@ -4,14 +4,28 @@ A "fixture" is a value a test asks for by naming it as an argument: a test writt
 `def test_x(job_ad):` gets the sample job ad text passed in.
 """
 
+import os
 from pathlib import Path
 
+import psycopg
 import pytest
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
-from core.config import get_settings
+from core.config import Settings, get_settings
 from core.db import apply_schema, ping
 
 SAMPLES = Path(__file__).resolve().parents[1] / "samples"
+
+# Tests use their OWN database, agentforge_test, on the same Postgres. They never touch
+# the runs your app uses, so a running worker or the sweeper can never pick up test runs
+# and spend real AI credits on them. Setting the environment variable here, before any
+# test runs, points everything at it: the api, the worker code and any subprocess.
+APP_DATABASE_URL = Settings().database_url  # read from .env (or the environment)
+TEST_DATABASE = "agentforge_test"
+TEST_DATABASE_URL = make_conninfo(APP_DATABASE_URL, dbname=TEST_DATABASE)
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL  # an environment variable beats .env
+get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)
@@ -48,9 +62,15 @@ def cv() -> str:
 
 @pytest.fixture(scope="session")
 def database_url() -> str:
-    """A ready database, or skip the test if Postgres isn't running."""
-    url = get_settings().database_url
-    if not ping(url):
+    """The test database, created if missing; or skip the test if Postgres isn't running."""
+    if not ping(APP_DATABASE_URL):
         pytest.skip("Postgres isn't running: docker compose up -d")
-    apply_schema(url)
-    return url
+    with psycopg.connect(APP_DATABASE_URL, autocommit=True) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s", (TEST_DATABASE,)
+        ).fetchone()
+        if not exists:
+            # sql.Identifier quotes the name safely; a database name can't be a %s parameter
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(TEST_DATABASE)))
+    apply_schema(TEST_DATABASE_URL)
+    return TEST_DATABASE_URL
