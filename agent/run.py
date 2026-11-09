@@ -91,7 +91,7 @@ def run(graph, args: argparse.Namespace) -> int:
         print("  (if it crashes, continue with: uv run python -m agent.run --resume <run-id>)")
         payload = {
             "run_id": run_id,
-            "user_id": "dev-user",  # TODO(Day 3): the signed-in user's ID
+            "user_id": "dev-user",  # terminal runner only; the api uses the signed-in user
             "job_ad": args.job_ad.read_text(),
             "cv": args.cv.read_text(),
         }
