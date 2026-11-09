@@ -1,8 +1,5 @@
 """The worker: takes run IDs off the queue and runs the agent.
 
-YOU build this on Days 4 and 5. It's a skeleton on purpose: this is the code you'll be
-asked about line by line, so write it yourself. Each function says what it must do.
-
 The loop, in order:
   1. Pull a message from Pub/Sub. It contains only a run_id.
   2. Claim the run in Postgres with ONE conditional UPDATE. If the claim fails, the run
@@ -48,15 +45,12 @@ FRIENDLY_ERROR = "Something went wrong while running the agent. Please try again
 
 
 def claim_run(conn, run_id: UUID, lease_seconds: int = 120) -> bool:
-    """TODO(Day 4): try to take ownership of a run. Return True if this worker got it.
+    """Try to take ownership of a run. Return True if this worker got it.
 
-    Use a single UPDATE on the runs table that succeeds only when the run is 'queued',
-    OR it's 'running' but its lease_until is in the past (the last worker died).
-    On success it sets status='running', adds 1 to attempt, and sets lease_until to
-    now + lease_seconds. Check how many rows it changed to know if you won.
-
-    Why one UPDATE and not "SELECT, then UPDATE"? Two workers could both read 'queued'
-    before either writes. A single conditional UPDATE can't be won twice.
+    One conditional UPDATE: succeeds only when the run is 'queued', or 'running' with an
+    expired lease (the last worker died). Sets status='running', increments attempt, and
+    sets lease_until. rowcount tells us if we won — two workers can't both win the same
+    UPDATE, which a SELECT-then-UPDATE race would allow.
     """
     cursor = conn.execute(
         """
@@ -74,7 +68,7 @@ def claim_run(conn, run_id: UUID, lease_seconds: int = 120) -> bool:
 
 
 def renew_lease(conn, run_id: UUID, lease_seconds: int = 120) -> None:
-    """TODO(Day 4): push lease_until forward. Call it after every graph step."""
+    """Push lease_until forward. Call after every graph step so the sweeper leaves us alone."""
     conn.execute(
         "UPDATE runs SET lease_until = now() + make_interval(secs => %s), updated_at = now() "
         "WHERE id = %s AND status = 'running'",
@@ -83,11 +77,11 @@ def renew_lease(conn, run_id: UUID, lease_seconds: int = 120) -> None:
 
 
 def finish_run(conn, run_id: UUID, *, result: dict | None, error: str | None) -> bool:
-    """TODO(Day 4): set status to 'succeeded' or 'failed', save result or error,
-    clear lease_until, update updated_at, and add a run_events row. One transaction.
+    """Set status to 'succeeded' or 'failed', save result or error, clear the lease, and
+    add a run_events row. One transaction.
 
     Only a 'running' run can be finished. Return True if this call finished it, False if
-    it wasn't running (e.g. a late duplicate worker), and then change nothing at all."""
+    it wasn't running (e.g. a late duplicate worker) — then change nothing."""
     status = "succeeded" if error is None else "failed"
     with conn.transaction():  # both writes happen, or neither does
         cursor = conn.execute(

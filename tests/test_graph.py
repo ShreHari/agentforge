@@ -164,7 +164,7 @@ def test_urls_seen_only_counts_search_results():
 
 def test_real_research_keeps_only_real_sources(monkeypatch):
     """Checks OUR code around the Deep Agent. The agent itself is a pretend one, so the
-    test never calls the AI or the web. This passes once TODOs 1 to 3 are done."""
+    test never calls the AI or the web."""
     monkeypatch.setenv("FAKE_LLM", "false")
     nodes.get_settings.cache_clear()
     monkeypatch.setattr(nodes, "get_model", lambda: "pretend-model")

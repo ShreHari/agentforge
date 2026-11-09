@@ -126,14 +126,6 @@ def ask_agent_for_brief(company: str) -> CompanyBrief:
         today=date.today().isoformat(), max_searches=MAX_SEARCHES
     )
 
-    # TODO 1: create the agent with create_deep_agent(...). Like practice 03, with these
-    # changes (pass every one by name, e.g. model=..., as in practice):
-    #   model=get_model()            <- our shared model, with its rate limiter
-    #   tools=[search_web]
-    #   system_prompt=instructions
-    #   middleware=[TodoListMiddleware(),
-    #               ToolCallLimitMiddleware(tool_name="search_web", run_limit=MAX_SEARCHES)]
-    #   response_format=CompanyBrief  <- the agent must finish with a CompanyBrief
     agent = create_deep_agent(
         model=get_model(),
         tools=[search_web],
@@ -143,21 +135,15 @@ def ask_agent_for_brief(company: str) -> CompanyBrief:
             ToolCallLimitMiddleware(
                 tool_name="search_web", run_limit=MAX_SEARCHES)
         ],
-        response_format=CompanyBrief
+        response_format=CompanyBrief,
     )
 
-    # TODO 2: run it, like practice 03, but the user message is the company name in tags:
-    #   "content": f"<company>{company}</company>"
-    # and keep config={"recursion_limit": 50}
     result = agent.invoke(
         {"messages": [
             {"role": "user", "content": f"<company>{company}</company>"}]},
-        config={"recursion_limit": 50}
+        config={"recursion_limit": 50},
     )
 
-    # TODO 3: the agent's CompanyBrief is in result["structured_response"]. Put it in
-    # `brief`, then check it with isinstance; if it isn't a CompanyBrief, raise TypeError
-    # (same pattern as ask_model_for_draft).
     brief = result["structured_response"]
     if not isinstance(brief, CompanyBrief):
         raise TypeError(f"Expected CompanyBrief from the agent, got {type(brief).__name__}")
@@ -353,17 +339,12 @@ def ask_model_for_draft(job_ad: str, cv: str, matches: list[dict]) -> DraftAnswe
     ratings = "\n".join(
         f"- [{m['strength']}] {m['requirement']}" for m in matches)
 
-    # TODO 1: make a structured model that must answer in the DraftAnswer shape
     structured_model = get_model().with_structured_output(DraftAnswer)
-
-    # TODO 2: invoke it with two messages; tags mark where each piece of data starts and ends
     result = structured_model.invoke([
         ("system", DRAFT_INSTRUCTIONS),
         ("human", f"<job_ad>\n{job_ad}\n</job_ad>\n\n<cv>\n{cv}\n</cv>\n\n"
          f"<ratings>\n{ratings}\n</ratings>"),
     ])
-
-    # TODO 3: check the result is a DraftAnswer (isinstance), then return it
     if not isinstance(result, DraftAnswer):
         raise TypeError(
             f"Expected DraftAnswer from the model, got {type(result).__name__}")
